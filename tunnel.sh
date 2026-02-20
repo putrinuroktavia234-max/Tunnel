@@ -125,7 +125,7 @@ show_install_banner() {
     echo -e "  ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "  ${WHITE}  Youzin Crabz Tunel${NC}"
-    echo -e "  ${DIM}  The Professor${NC}"
+    echo -e "      ${DIM}  The Professor${NC}"
     echo ""
     echo -e "  ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
