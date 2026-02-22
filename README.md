@@ -15,9 +15,9 @@ Youzin Crabz Tunel adalah script manajemen VPN panel berbasis terminal untuk Ubu
 
 | OS | Versi | Status |
 |---|---|---|
-| Ubuntu | 20.04 LTS | ✅ Didukung |
+
 | Ubuntu | 22.04 LTS | ✅ Didukung |
-| Ubuntu | 24.04 LTS | ✅ Didukung |
+
 
 > OS lain tidak didukung.
 
@@ -152,19 +152,6 @@ Panel ini dilengkapi Telegram Bot untuk mempermudah manajemen akun tanpa perlu m
 
 ---
 
-## 🔄 Update Panel
-
-```bash
-menu
-# pilih [16] Update Panel
-```
-
-Atau langsung:
-```bash
-./tunnel.sh --update
-```
-
----
 
 ## 🗑️ Uninstall
 
@@ -177,7 +164,7 @@ menu
 
 ## 📞 Kontak
 
-- Telegram: [@ridhani16](https://t.me/ridhani16)
+- Telegram: [@YouzinCrabz]
 
 ---
 
