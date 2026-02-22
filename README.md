@@ -65,18 +65,9 @@ Youzin Crabz Tunel adalah script manajemen VPN panel berbasis terminal untuk Ubu
 
 **1. Download script**
 ```bash
-wget -O tunnel.sh https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/tunnel.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/install.sh)
 ```
 
-**2. Beri izin eksekusi**
-```bash
-chmod +x tunnel.sh
-```
-
-**3. Jalankan**
-```bash
-./tunnel.sh
-```
 
 Script akan otomatis memulai proses instalasi, meminta domain, lalu menginstall semua komponen. Setelah selesai VPS akan **reboot otomatis**.
 
