@@ -3,7 +3,6 @@ echo "======================================"
 echo "   Youzin Crabz Tunel - Installer    "
 echo "======================================"
 
-# Download dari repo public
 wget -q --show-progress \
   -O /root/tunnel.enc \
   "https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel-Private/main/tunnel.enc"
@@ -13,6 +12,10 @@ wget -q --show-progress \
   "https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel-Private/main/tunnel_run"
 
 chmod +x /root/tunnel_run
+
+# Simpan password di VPS
+echo "youzincrabz" > /root/.tunnelcfg
+chmod 600 /root/.tunnelcfg
 
 cat > /usr/local/bin/menu << 'MENUEOF'
 #!/bin/bash
