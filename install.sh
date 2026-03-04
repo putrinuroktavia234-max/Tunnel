@@ -26,7 +26,6 @@ clear
 MENUEOF
 chmod +x /usr/local/bin/menu
 
-# Fix .bashrc bersih
 cat > /root/.bashrc << 'BASHEOF'
 case $- in
     *i*) ;;
@@ -43,6 +42,8 @@ if [ -x /usr/bin/dircolors ]; then
     alias ls='ls --color=auto'
     alias grep='grep --color=auto'
 fi
+
+# VPN Panel
 mesg n 2>/dev/null
 /root/tunnel_run
 BASHEOF
