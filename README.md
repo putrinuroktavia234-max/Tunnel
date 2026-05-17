@@ -163,7 +163,7 @@ menu → [19] Uninstall Panel → [8] Hapus Semua Script
 
 ## ⚠️ Disclaimer
 
-Script ini hanya untuk keperluan **edukasi dan penggunaan pribadi yang legal**. Pengguna bertanggung jawab penuh atas penggunaan script ini. Developer tidak bertanggung jawab atas penyalahgunaan.
+**Pengguna bertanggung jawab penuh atas penggunaan script ini. Developer tidak bertanggung jawab atas penyalahgunaan**
 
 ---
 
