@@ -4,6 +4,16 @@ Standalone binary that installs and manages a multi-protocol VPN server. The bin
 
 This page covers what the panel does, how to install it, every command it exposes, the ports it uses, and how to fix the common failures during setup.
 
+## Supported systems
+
+The panel runs on Ubuntu. Tested and supported releases:
+
+- Ubuntu 24.04 LTS
+- Ubuntu 22.04 LTS
+- Ubuntu 20.04 LTS
+
+It targets `x86_64` (AMD64) servers. Use the `arm64` build for Oracle Cloud or AWS Graviton instances.
+
 ## What it runs
 
 The panel manages these services on a single Ubuntu server:
