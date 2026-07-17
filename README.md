@@ -129,3 +129,7 @@ Nginx is up but PHP-FPM or the panel process is down. Run `./vpn status` to see 
 ## Credits
 
 Youzin Crabz Tunel, built by The Professor. Report issues through the project repository.
+
+## License
+
+Released under the [MIT License](LICENSE). You may use, modify, and distribute the binary and source under the terms in that file.
