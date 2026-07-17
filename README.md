@@ -116,20 +116,6 @@ Let's Encrypt needs the domain's A record to point at the server and port `80` o
 **Web panel shows 502**
 Nginx is up but PHP-FPM or the panel process is down. Run `./vpn status` to see which service is off, then `./vpn restart` to bring everything back.
 
-## Building from source
-
-The binary wraps the installer script through Go's `embed` directive, so the script ships inside the executable. To rebuild or cross-compile, install Go 1.21 or later and run:
-
-```bash
-# Local architecture
-go build -o vpn .
-
-# Cross-compile for ARM64
-GOARCH=arm64 GOOS=linux go build -o vpn-arm64 .
-```
-
-The build reads `vpn.sh` from the project root at compile time, so keep that file next to `main.go`. The resulting binary is self-contained and needs no `vpn.sh` on the target server.
-
 ## Credits
 
 Youzin Crabz Tunel, built by The Professor. Report issues through the project repository.
