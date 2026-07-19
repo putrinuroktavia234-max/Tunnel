@@ -327,7 +327,7 @@ PAYMENT_FILE="/root/.payment_info"
 
 
 
-DOMAIN_TYPE_FILE="/root/.domain_type"
+DOMAIN_TYPE_FILE="/root/domain_type"
 
 
 
@@ -3138,8 +3138,7 @@ get_ssl_cert() {
                 --non-interactive \
                 --agree-tos \
                 --register-unsafely-without-email \
-                --timeout 60 \
-                2>/dev/null
+                --timeout 120
 
 
 
@@ -3147,15 +3146,17 @@ get_ssl_cert() {
 
 
 
-                cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt
+                cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt && \
+                cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" /etc/xray/xray.key || { echo -e "  ${RED}✘ Gagal copy cert/key dari Let's Encrypt!${NC}"; _gen_self_signed; return; }
 
 
 
-                cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" /etc/xray/xray.key
-
-
-
-                echo -e "  ${GREEN}✔ Let's Encrypt cert berhasil!${NC}"
+                if _verify_cert_key; then
+                    echo -e "  ${GREEN}✔ Let's Encrypt cert berhasil + verified!${NC}"
+                else
+                    echo -e "  ${RED}✘ Cert & key MISMATCH dari Let's Encrypt! Fallback self-signed...${NC}"
+                    _gen_self_signed
+                fi
 
 
 
@@ -3184,6 +3185,7 @@ get_ssl_cert() {
 
 
             _gen_self_signed
+            _verify_cert_key || echo -e "  ${RED}✘ Self-signed cert-key MISMATCH! Coba ulangi.${NC}"
 
 
 
@@ -3196,6 +3198,7 @@ get_ssl_cert() {
 
 
         _gen_self_signed
+        _verify_cert_key || echo -e "  ${RED}✘ Self-signed cert-key MISMATCH! Coba ulangi.${NC}"
 
 
 
@@ -3215,6 +3218,14 @@ get_ssl_cert() {
 
 
 
+# Verify xray.crt and xray.key are a matching pair (same modulus)
+_verify_cert_key() {
+    local cert_mod key_mod
+    cert_mod=$(openssl x509 -in /etc/xray/xray.crt -noout -modulus 2>/dev/null | md5sum | cut -d' ' -f1)
+    key_mod=$(openssl rsa -in /etc/xray/xray.key -noout -modulus 2>/dev/null | md5sum | cut -d' ' -f1)
+    [[ -n "$cert_mod" && -n "$key_mod" && "$cert_mod" == "$key_mod" ]] && return 0 || return 1
+}
+
 _gen_self_signed() {
 
 
@@ -3223,7 +3234,9 @@ _gen_self_signed() {
         -days 3650 -nodes -x509 \
         -subj "/C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN}" \
         -keyout /etc/xray/xray.key \
-        -out /etc/xray/xray.crt 2>/dev/null
+        -out /etc/xray/xray.crt 2>/dev/null && \
+        chmod 644 /etc/xray/xray.* 2>/dev/null && \
+        _verify_cert_key || echo -e "  ${RED}✘ Self-signed cert generation FAILED!${NC}"
 
 
 
@@ -4409,6 +4422,16 @@ DOMAIN_FILE="/root/domain"
 
 
 
+# ── Verify cert & key match ──
+_verify_cert_key() {
+    local cert_mod key_mod
+    cert_mod=$(openssl x509 -in /etc/xray/xray.crt -noout -modulus 2>/dev/null | md5sum | cut -d' ' -f1)
+    key_mod=$(openssl rsa -in /etc/xray/xray.key -noout -modulus 2>/dev/null | md5sum | cut -d' ' -f1)
+    [[ -n "$cert_mod" && -n "$key_mod" && "$cert_mod" == "$key_mod" ]] && return 0 || return 1
+}
+
+
+
 LOG="/var/log/ssl-renew.log"
 
 
@@ -4481,19 +4504,17 @@ if certbot renew --standalone --non-interactive --agree-tos --no-random-sleep-on
 
 
 
-        cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt
-
-
-
+        cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt && \
         cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" /etc/xray/xray.key
 
 
 
         chmod 644 /etc/xray/xray.*
-
-
-
-        echo "Cert copied to /etc/xray/: OK"
+        if _verify_cert_key; then
+            echo "Cert copied to /etc/xray/: OK (verified)"
+        else
+            echo "Cert copied: FAILED — cert & key MISMATCH!"
+        fi
 
 
 
@@ -4525,19 +4546,17 @@ else
 
 
 
-            cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt
-
-
-
+            cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /etc/xray/xray.crt && \
             cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" /etc/xray/xray.key
 
 
 
             chmod 644 /etc/xray/xray.*
-
-
-
-            echo "Cert copied to /etc/xray/: OK"
+            if _verify_cert_key; then
+                echo "Cert copied to /etc/xray/: OK (verified)"
+            else
+                echo "Cert copied: FAILED — cert & key MISMATCH!"
+            fi
 
 
 
@@ -28020,6 +28039,149 @@ PHPEOF
         echo -e "\n  ${RED}✘ Security hardening gagal!${NC}"
     fi
     return $rc
+}
+
+# ============================================================
+# MAIN MENU INTERACTIVE
+# ============================================================
+
+main_menu() {
+    while true; do
+        show_system_info
+        show_menu
+        echo ""
+        read -rp "  Select [0-24]: " menu_choice
+        case $menu_choice in
+            1) menu_ssh ;;
+            2) menu_vmess ;;
+            3) menu_vless ;;
+            4) menu_trojan ;;
+            5) _menu_list_all ;;
+            6) menu_renew ;;
+            7) check_expired_accounts ;;
+            8) delete_expired_run ;;
+            9) menu_telegram_bot ;;
+            10) change_domain ;;
+            11) menu_ssl ;;
+            12) optimize_vpn ;;
+            13) restart_menu ;;
+            14) run_speedtest ;;
+            15) _menu_backup ;;
+            16) _menu_restore ;;
+            17) menu_uninstall ;;
+            18) menu_advanced ;;
+            19) show_info_port ;;
+            20) install_zivpn_udp ;;
+            21) deploy_web_menu ;;
+            22) _adv_ddos_protection ;;
+            23) show_traffic ;;
+            24) run_health_check ;;
+            0) clear; echo -e "  ${GREEN}Goodbye!${NC}"; break ;;
+            *) echo -e "  ${RED}Invalid!${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ── Helper: Check Expired Accounts ──
+check_expired_accounts() {
+    clear
+    print_menu_header "CHECK EXPIRED ACCOUNTS"
+    local today; today=$(date +%s)
+    local any=0
+    for f in "$AKUN_DIR"/*.txt; do
+        [[ ! -f "$f" ]] && continue
+        local exp_str; exp_str=$(grep "EXPIRED=" "$f" 2>/dev/null | head -1 | cut -d= -f2-)
+        local exp_ts; exp_ts=$(date -d "${exp_str//,/}" +%s 2>/dev/null)
+        if [[ -n "$exp_ts" && $exp_ts -lt $today ]]; then
+            any=1
+            local fname; fname=$(basename "$f" .txt)
+            echo -e "  ${RED}EXPIRED${NC} : ${fname}  (${exp_str})"
+        fi
+    done
+    [[ $any -eq 0 ]] && echo -e "  ${GREEN}✔ No expired accounts!${NC}"
+    echo ""; read -rp "  Tekan Enter..."
+}
+
+# ── Helper: Delete Expired (with restart) ──
+delete_expired_run() {
+    clear
+    print_menu_header "DELETE EXPIRED ACCOUNTS"
+    delete_expired
+    xray -test -config "$XRAY_CONFIG" >/dev/null 2>&1 && systemctl restart xray 2>/dev/null || true
+    echo -e "  ${GREEN}✔ Expired accounts cleaned!${NC}"
+    sleep 2
+}
+
+# ── Helper: Restart Services Menu ──
+restart_menu() {
+    clear
+    print_menu_header "RESTART SERVICES"
+    echo -e "  ${WHITE}[1]${NC} Restart XRAY"
+    echo -e "  ${WHITE}[2]${NC} Restart NGINX"
+    echo -e "  ${WHITE}[3]${NC} Restart HAPROXY"
+    echo -e "  ${WHITE}[4]${NC} Restart DROPBEAR"
+    echo -e "  ${WHITE}[5]${NC} Restart SSH"
+    echo -e "  ${WHITE}[6]${NC} Restart KEEPALIVE"
+    echo -e "  ${WHITE}[7]${NC} Restart ALL"
+    echo -e "  ${RED}[0]${NC} Kembali"
+    echo ""
+    read -rp "  Select: " rs
+    case $rs in
+        1) systemctl restart xray 2>/dev/null; echo -e "  ${GREEN}✔ XRAY restarted${NC}"; sleep 1 ;;
+        2) if nginx -t 2>/dev/null && systemctl restart nginx; then echo -e "  ${GREEN}✔ NGINX restarted${NC}"; else echo -e "  ${RED}✘ NGINX config error, restart skipped${NC}"; fi; sleep 1 ;;
+        3) systemctl restart haproxy 2>/dev/null; echo -e "  ${GREEN}✔ HAPROXY restarted${NC}"; sleep 1 ;;
+        4) systemctl restart dropbear 2>/dev/null; echo -e "  ${GREEN}✔ DROPBEAR restarted${NC}"; sleep 1 ;;
+        5) systemctl restart "$(get_ssh_service_name)" 2>/dev/null; echo -e "  ${GREEN}✔ SSH restarted${NC}"; sleep 1 ;;
+        6) systemctl restart vpn-keepalive 2>/dev/null; echo -e "  ${GREEN}✔ KEEPALIVE restarted${NC}"; sleep 1 ;;
+        7) for s in xray nginx haproxy dropbear "$(get_ssh_service_name)" vpn-keepalive; do systemctl restart "$s" 2>/dev/null; done; echo -e "  ${GREEN}✔ ALL restarted${NC}"; sleep 2 ;;
+        0) return ;;
+    esac
+}
+
+# ── Helper: Traffic Display ──
+show_traffic() {
+    clear
+    print_menu_header "TRAFFIC MONITOR"
+    if command -v vnstat >/dev/null 2>&1; then
+        vnstat -m 2>/dev/null || vnstat 2>/dev/null
+    else
+        echo -e "  ${YELLOW}vnstat not installed.${NC}"
+        echo -e "  ${DIM}Run: apt-get install -y vnstat${NC}"
+    fi
+    echo ""; read -rp "  Tekan Enter..."
+}
+
+# ── Helper: Health Check ──
+run_health_check() {
+    clear
+    print_menu_header "HEALTH CHECK"
+    echo -e "  ${CYAN}CPU:${NC} $(_get_cpu_usage)%"
+    echo -e "  ${CYAN}RAM:${NC} $(free -m | awk '/Mem:/{printf "%d/%d MB (%.0f%%)",\$3,\$2,(\$3/\$2)*100}')"
+    echo -e "  ${CYAN}Disk:${NC} $(df -h / | awk 'NR==2{printf "%s/%s (%s)",\$3,\$2,\$5}')"
+    echo -e "  ${CYAN}Uptime:${NC} $(uptime -p 2>/dev/null || uptime)"
+    echo ""
+    for svc in xray nginx haproxy dropbear ssh; do
+        local status; status=$(systemctl is-active "$svc" 2>/dev/null || echo "N/A")
+        local color="$GREEN"; [[ "$status" != "active" ]] && color="$RED"
+        echo -e "  ${color}●${NC} $svc: $status"
+    done
+    if [[ -f /root/quick-test.sh ]]; then
+        echo ""; echo -e "  ${CYAN}Running quick-test.sh...${NC}"
+        bash /root/quick-test.sh 2>/dev/null | tail -20
+    fi
+    echo ""; read -rp "  Tekan Enter..."
+}
+
+# ── Helper: Deploy Web Menu ──
+deploy_web_menu() {
+    clear
+    print_menu_header "ORDERVPN WEB"
+    setup_web_domain
+    deploy_web_page
+    _ordervpn_deploy_files 2>/dev/null || true
+    _ordervpn_security_harden 2>/dev/null || true
+    echo -e "  ${GREEN}✔ Web deployed!${NC}"
+    sleep 2
 }
 
 # ============================================================
