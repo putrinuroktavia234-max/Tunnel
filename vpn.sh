@@ -26522,7 +26522,15 @@ auto_install() {
 
 
 
-    for pkg in nginx openssh-server dropbear haproxy; do _pkg "$pkg"; done
+    for pkg in nginx nginx-common openssh-server dropbear haproxy; do _pkg "$pkg"; done
+
+
+
+    # Verifikasi nginx memiliki modul grpc (penting untuk grpc_pass)
+    if ! nginx -V 2>&1 | grep -qoE 'ngx_http_grpc_module|grpc'; then
+        echo -e "  ${YELLOW}⚠ Modul gRPC nginx mungkin tidak tersedia. Mencoba install nginx-full...${NC}"
+        apt-get install -y nginx-full >/dev/null 2>&1 || true
+    fi
 
 
 
@@ -26771,6 +26779,18 @@ XRAYUNIT
 
 
 
+    # Validasi sertifikat SSL sebelum generate nginx config (fallback jika belum ada)
+    if [[ ! -f "/etc/xray/xray.crt" || ! -f "/etc/xray/xray.key" ]]; then
+        echo -e "  ${YELLOW}⚠ Sertifikat SSL belum tersedia. Membuat self-signed sebagai fallback...${NC}" >> "$LOG"
+        local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
+        openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 \
+            -subj "/C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN_SAFE}" \
+            -keyout /etc/xray/xray.key -out /etc/xray/xray.crt 2>/dev/null
+        chmod 644 /etc/xray/xray.* 2>/dev/null
+    fi
+
+
+
 
 
 
@@ -26815,15 +26835,13 @@ XRAYUNIT
 
 
 
-    nginx_major=$(echo "$nginx_ver" | cut -d. -f1)
-
-
-
-    nginx_minor=$(echo "$nginx_ver" | cut -d. -f2)
-
-
-
-    nginx_patch=$(echo "$nginx_ver" | cut -d. -f3)
+    # Validasi: jika kosong atau bukan angka, pakai default 1.24.0
+    nginx_major=$(echo "${nginx_ver:-1.24.0}" | cut -d. -f1)
+    nginx_minor=$(echo "${nginx_ver:-1.24.0}" | cut -d. -f2)
+    nginx_patch=$(echo "${nginx_ver:-1.24.0}" | cut -d. -f3)
+    [[ ! "$nginx_major" =~ ^[0-9]+$ ]] && nginx_major=1
+    [[ ! "$nginx_minor" =~ ^[0-9]+$ ]] && nginx_minor=24
+    [[ ! "$nginx_patch" =~ ^[0-9]+$ ]] && nginx_patch=0
 
 
 
@@ -26958,6 +26976,7 @@ server {
 
 
         grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header Host \$host;
 
 
 
@@ -26982,6 +27001,7 @@ server {
 
 
         grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header Host \$host;
 
 
 
@@ -27006,6 +27026,7 @@ server {
 
 
         grpc_set_header X-Real-IP \$remote_addr;
+        grpc_set_header Host \$host;
 
 
 
