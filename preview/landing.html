@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OrderVPN — Hardened Tunnel Infrastructure</title>
+<link rel="stylesheet" href="ordervpn.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+</head>
+<body>
+
+<!-- ====== NAV ====== -->
+<nav class="nav">
+  <div class="nav-brand" aria-label="OrderVPN home">
+    <span class="brand-mark" aria-hidden="true">OV</span>
+    <span class="name">OrderVPN</span>
+    <span class="ver">v3.12.0</span>
+  </div>
+  <div class="nav-actions">
+    <a class="btn btn-sm btn-ghost" href="#">Autentikasi</a>
+    <a class="btn btn-sm btn-primary" href="#pricing">Deploy Akun</a>
+  </div>
+</nav>
+
+<!-- ====== HERO ====== -->
+<header class="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-status">
+          <span class="led pulse"></span>
+          SYSTEM ONLINE · UPTIME 99.97%
+          <span class="led warn" title="maintenance"></span>
+        </div>
+        <h1>Jalur Privat<br><span class="accent">Kecepatan Tinggi.</span></h1>
+        <p class="hero-lead">Infrastruktur tunneling kelas server. Bypass DPI, enkripsi berlapis, dan kontrol penuh dari satu panel — tanpa intervensi manual, tanpa biaya tersembunyi.</p>
+        <div class="hero-actions">
+          <a href="#pricing" class="btn btn-primary">Mulai Sekarang</a>
+          <a href="#protocols" class="btn btn-ghost">Lihat Topologi</a>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-mini"><span class="v">14</span><span class="l">Node Aktif</span></div>
+          <div class="stat-mini"><span class="v">3</span><span class="l">Region</span></div>
+          <div class="stat-mini"><span class="v">6</span><span class="l">Protokol</span></div>
+          <div class="stat-mini"><span class="v">0s</span><span class="l">Aktivasi</span></div>
+        </div>
+      </div>
+      <aside class="spec-card">
+        <div class="label">Live Server Spec · SG-CORE-01</div>
+        <div class="field"><span class="k">Region</span><span class="v">Singapore · SG-1</span></div>
+        <div class="field"><span class="k">Status</span><span class="v ok">● READY</span></div>
+        <div class="field"><span class="k">Latency</span><span class="v">12ms</span></div>
+        <div class="field"><span class="k">Throughput</span><span class="v">1 Gbps</span></div>
+        <div class="field"><span class="k">Protocol</span><span class="v">VLESS · WS</span></div>
+        <div class="field"><span class="k">TLS Fingerprint</span><span class="v warn">Rotasi 6j</span></div>
+        <div class="field"><span class="k">Endpoint</span><span class="v code">sg1.ordervpn.io:443</span></div>
+      </aside>
+    </div>
+  </div>
+</header>
+
+<!-- ====== FEATURES ====== -->
+<section id="protocols">
+  <div class="container">
+    <div class="eyebrow">02 / Protocols &amp; Capability</div>
+    <h2 class="section-title">Arsitektur <span class="accent">Multi-Protokol.</span></h2>
+    <p class="section-sub">Enam pilar yang menjadi fondasi setiap tunnel yang kami deploy. Bukan jargon marketing — ini capabilities yang dieksekusi otomatis oleh installer kami.</p>
+    <div class="features-grid">
+      <article class="feature">
+        <span class="num">01</span>
+        <h3>Multi-Protocol Native</h3>
+        <p>Dukungan natif XRAY, VMess, VLess, Trojan, Dropbear SSH, dan ZIVPN dalam satu panel terpadu.</p>
+      </article>
+      <article class="feature">
+        <span class="num">02</span>
+        <h3>Bypass Pemblokiran ISP</h3>
+        <p>Obfuscation tingkat kernel. Tembus limitasi ISP tanpa proksi berlapis yang menambah latensi.</p>
+      </article>
+      <article class="feature">
+        <span class="num">03</span>
+        <h3>Panel Otonom</h3>
+        <p>Manajemen durasi, batas IP, dan rotasi sesi otomatis. Tidak ada antrian konfirmasi admin.</p>
+      </article>
+      <article class="feature">
+        <span class="num">04</span>
+        <h3>Failover Berlapis</h3>
+        <p>Node geographically distributed. Script keep-alive memantau koneksi dan restart otomatis saat anomali.</p>
+      </article>
+      <article class="feature">
+        <span class="num">05</span>
+        <h3>Enkripsi Berlapis</h3>
+        <p>Rotasi TLS fingerprint harian. Isolated credential namespace per akun. Dump trafik nol-persisten.</p>
+      </article>
+      <article class="feature">
+        <span class="num">06</span>
+        <h3>Gateway Pembayaran</h3>
+        <p>Integrasi Tripay. Aktivasi otomatis begitu invoice lunas — tanpa kontak manual, tanpa delay.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ====== PRICING ====== -->
+<section id="pricing">
+  <div class="container">
+    <div class="eyebrow">03 / Topology &amp; Pricing</div>
+    <h2 class="section-title">Pilih Jalur. <span class="accent">Sesuaikan Beban.</span></h2>
+    <p class="section-sub">Tiga topologi dengan karakteristik berbeda. Migrasi kapan saja gratis dengan cooldown 15 menit antar perpindahan server.</p>
+    <div class="pricing-grid">
+      <article class="price-card">
+        <div class="region">SG — Core Node</div>
+        <h3 class="name">Singapore Premium</h3>
+        <div class="price-tier">
+          <span class="amount">Rp 10.000</span><span class="unit">/ bulan</span>
+          <div class="secondary">atau Rp 15.62 / jam (Pay-As-You-Go)</div>
+        </div>
+        <ul class="price-features">
+          <li>Port 1 Gbps unmetered</li>
+          <li>Singapore datacenter premium IP</li>
+          <li>Xray VMess / VLess / Trojan</li>
+          <li>WebSocket + gRPC transport</li>
+          <li>Wildcard domain support</li>
+          <li>Maks 2 device concurrent</li>
+        </ul>
+        <button class="btn btn-ghost btn-full" type="button">Deploy Sekarang</button>
+      </article>
+      <article class="price-card featured">
+        <div class="region">ID — Local Route</div>
+        <h3 class="name">Indonesia Local</h3>
+        <div class="price-tier">
+          <span class="amount orange">Rp 12.500</span><span class="unit">/ bulan</span>
+          <div class="secondary">atau Rp 19.09 / jam (Pay-As-You-Go)</div>
+        </div>
+        <ul class="price-features">
+          <li>Latensi lokal &lt;20ms ke server nasional</li>
+          <li>ID datacenter routing</li>
+          <li>SSH OpenSSH + Dropbear included</li>
+          <li>UDP Custom gateway aktif</li>
+          <li>Cocok untuk streaming &amp; game lokal</li>
+          <li>Maks 2 device concurrent</li>
+        </ul>
+        <button class="btn btn-primary btn-full" type="button">Deploy Sekarang</button>
+      </article>
+      <article class="price-card">
+        <div class="region">GLOBAL — Multi Path</div>
+        <h3 class="name">Always-On Multi</h3>
+        <div class="price-tier">
+          <span class="amount">Rp 15.000</span><span class="unit">/ 135 GB</span>
+          <div class="secondary">bandwidth rollover enabled</div>
+        </div>
+        <ul class="price-features">
+          <li>Akses seluruh region aktif</li>
+          <li>IP rotation otomatis per sesi</li>
+          <li>Cocok untuk kebutuhan konten global</li>
+          <li>Priority queue saat kepadatan tinggi</li>
+          <li>Support ZIVPN UDP gateway</li>
+          <li>Maks 2 device concurrent</li>
+        </ul>
+        <button class="btn btn-ghost btn-full" type="button">Deploy Sekarang</button>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ====== ONBOARDING STEPS ====== -->
+<section id="bootstrap">
+  <div class="container">
+    <div class="eyebrow">04 / Onboarding</div>
+    <h2 class="section-title">Tiga Langkah. <span class="accent">Tanpa Antre.</span></h2>
+    <p class="section-sub">Proses dari registrasi hingga tunnel aktif dirancang untuk selesai dalam waktu kurang dari satu menit.</p>
+    <div class="steps-grid">
+      <article class="step">
+        <span class="step-num">01</span>
+        <h3>Registrasi Kredensial</h3>
+        <p>Buat akun dengan email valid. Verifikasi OTP otomatis tanpa kontak admin dan tanpa dokumen tambahan.</p>
+      </article>
+      <article class="step">
+        <span class="step-num">02</span>
+        <h3>Tentukan Topologi</h3>
+        <p>Pilih region server dan paket langganan. Auto-renew tersedia bila saldo dompet mencukupi di akhir siklus.</p>
+      </article>
+      <article class="step">
+        <span class="step-num">03</span>
+        <h3>Injeksi Koneksi</h3>
+        <p>Konfigurasi ter-generate otomatis. Tempel ke aplikasi client pilihan — tunnel aktif seketika tanpa restart.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ====== FAQ ====== -->
+<section id="faq">
+  <div class="container">
+    <div class="eyebrow">05 / Knowledge Base</div>
+    <h2 class="section-title">Pertanyaan yang <span class="accent">Sering Muncul.</span></h2>
+    <p class="section-sub">Tidak menemukan jawaban yang kamu butuhkan? Kontak admin via Telegram atau WhatsApp untuk respon cepat 24/7.</p>
+    <div class="faq-group">
+      <div class="group-title">Generale</div>
+      <details class="faq-item">
+        <summary>Apakah trafik saya di-logging di server?</summary>
+        <div class="answer">Tidak. Kami tidak menyimpan log koneksi atau record destination apapun. Session berakhir ketika tunnel dimatikan, dan metadata koneksi hanya tersedia di memory process — tidak dipersistensi ke disk sama sekali.</div>
+      </details>
+      <details class="faq-item" open>
+        <summary>Bagaimana cara kerja sistem batas IP secara teknis?</summary>
+        <div class="answer">Sistem menghitung sesi aktif berdasarkan session identifier unik per device. Saat device ketiga mencoba konek, sesi terlama diputus secara otomatis. Tidak ada intervensi manual yang diperlukan.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Apakah kredensial bisa digunakan di STB atau OpenWrt router?</summary>
+        <div class="answer">Ya. Konfigurasi yang ter-generate kompatibel dengan aplikasi client mainstream — termasuk STB Android, router OpenWrt dengan passwall/shadowsocks-libev, dan seluruh klien resmi Xray / V2RayNG di mobile.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Berapa lama waktu aktivasi setelah pembayaran?</summary>
+        <div class="answer">Seketika. Gateway Tripay mengirim callback ke server begitu invoice berstatus lunas. Akun di-upgrade ke tier berbayar secara otomatis tanpa antrian approval.</div>
+      </details>
+    </div>
+    <div class="faq-group">
+      <div class="group-title">Lanjutan</div>
+      <details class="faq-item">
+        <summary>Bisakah saya migrasi server tanpa membuat akun baru?</summary>
+        <div class="answer">Bisa. Perubahan server tunduk pada cooldown 15 menit antar migrasi untuk mencegah churning akun. Perpindahan protokol berlaku untuk layanan Trojan, VMess, dan VLess tanpa downtime.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Bagaimana aturan auto-renew di akhir masa aktif?</summary>
+        <div class="answer">Jika saldo dompet Anda cukup dan auto-renew aktif, sistem akan memperpanjang otomatis. Anda menerima notifikasi 3 hari sebelumnya melalui bot Telegram dan email.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Apakah ada batasan jumlah akun yang boleh saya buat?</summary>
+        <div class="answer">Tidak ada batas kuantitas akun per identitas. Anda dapat berlangganan multipel akun aktif secara simultan tanpa batasan administratif apapun dari sisi kami.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ====== STATS ====== -->
+<section id="stats">
+  <div class="container">
+    <div class="eyebrow">06 / Network Metrics</div>
+    <h2 class="section-title">Angka yang <span class="accent">Tidak Berbohong.</span></h2>
+    <p class="section-sub">Snapshot infrastruktur real-time. Diperbarui setiap interval keep-alive 60 detik.</p>
+    <div class="stats-grid">
+      <div class="stat-cell"><div class="label">Node Aktif</div><div class="val orange">14</div><div class="sub">Tersebar di 3 region</div></div>
+      <div class="stat-cell"><div class="label">Tunnel Tereksekusi</div><div class="val">2.847</div><div class="sub">Akumulasi 30 hari</div></div>
+      <div class="stat-cell"><div class="label">Volume Trafik</div><div class="val blue">36 TB</div><div class="sub">Throughput agregat</div></div>
+      <div class="stat-cell"><div class="label">Transaksi Selesai</div><div class="val ok">9.210</div><div class="sub">Success rate 99.4%</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== FOOTER ====== -->
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>Infrastruktur</h4>
+      <p>Single-binary installer</p>
+      <p>Multi-region failover</p>
+      <p>Auto-renew engine</p>
+      <p>Tripay payment gateway</p>
+      <p>Telegram bot integration</p>
+    </div>
+    <div class="footer-col">
+      <h4>Pengumuman</h4>
+      <div class="announce"><span class="tag">NEW</span><p>Trial 3 hari untuk user baru. Hubungi admin untuk aktivasi awal tanpa biaya.</p></div>
+      <div class="announce warn"><span class="tag">PROMO</span><p>Diskon 25% untuk paket ID Local bulan ini. Berlaku hingga akhir bulan.</p></div>
+      <div class="announce"><span class="tag">INFO</span><p>Server baru Japan Tokyo dan SG-2 sudah aktif. Auto-rotated via panel.</p></div>
+    </div>
+    <div class="footer-col">
+      <h4>Kontak</h4>
+      <a href="#">Telegram: @ordervpn_admin</a>
+      <a href="#">WhatsApp: 0812-3456-7890</a>
+      <p>Response time: &lt; 30 menit</p>
+      <p>Layanan: 24/7</p>
+    </div>
+  </div>
+  <div class="footer-meta">
+    <span class="accent">OrderVPN</span>
+    <span class="sep">//</span>powered by Youzin Crabz Tunel
+    <span class="sep">//</span>v3.12.0
+    <span class="sep">//</span>build_commit: 7f7a62c
+  </div>
+</footer>
+
+</body>
+</html>

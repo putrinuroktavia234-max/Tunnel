@@ -274,7 +274,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.0"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="c5410030cedd0e5c1347c9c9d575ca5801eebe12b8ddb42fbab60e09ba3ed499"
+ORDERVPN_TAR_SHA256="PLACEHOLDER_SHA256"
 
 
 
@@ -27879,8 +27879,8 @@ _ordervpn_deploy_files() {
     local DIR="/var/www/html/ordervpn"
 
     if [[ ! -d "$DIR" ]]; then
-        echo -e "  ${YELLOW}  Sumber file web belum ada, mendownload...${NC}"
-        _ordervpn_download_web || return 1
+        echo -e "  ${RED}✘ Sumber file web tidak ditemukan${NC}"
+        return 1
     fi
 
     mkdir -p "$DIR"/{includes,api,admin,cron,uploads/bukti}
@@ -28023,199 +28023,6 @@ PHPEOF
     fi
     return $rc
 }
-# ============================================================
-# OrderVPN Web — Download / DB / Nginx Helpers
-# ============================================================
-
-_ordervpn_download_web() {
-    local dest="/var/www/html/ordervpn"
-    local tmp="/tmp/ordervpn-src.tar.gz"
-
-    echo -e "  ${CYAN}Mengunduh source web OrderVPN...${NC}"
-
-    local script_dir
-    script_dir=$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")
-    local local_tar="${script_dir}/ordervpn-src.tar.gz"
-
-    rm -f "$tmp"
-
-    if [[ -f "$local_tar" ]]; then
-        cp "$local_tar" "$tmp"
-        echo -e "  ${GREEN}  Menggunakan tarball lokal${NC}"
-    else
-        if ! curl -fsSL --max-time 120 --retry 3 -o "$tmp" "$ORDERVPN_TAR_URL"; then
-            echo -e "  ${RED}  Gagal mengunduh source web${NC}"
-            return 1
-        fi
-    fi
-
-    if [[ "$ORDERVPN_TAR_SHA256" != "PLACEHOLDER_SHA256" && -n "$ORDERVPN_TAR_SHA256" ]]; then
-        local dl_sha
-        dl_sha=$(sha256sum "$tmp" | awk '{print $1}')
-        if [[ "$dl_sha" != "$ORDERVPN_TAR_SHA256" ]]; then
-            echo -e "  ${RED}  Hash SHA256 tidak cocok!${NC}"
-            echo -e "  ${DIM}Expected: $ORDERVPN_TAR_SHA256${NC}"
-            echo -e "  ${DIM}Got:      $dl_sha${NC}"
-            rm -f "$tmp"
-            return 1
-        fi
-        echo -e "  ${GREEN}  Hash SHA256 cocok${NC}"
-    fi
-
-    local env_backup=""
-    if [[ -f "$dest/.env" ]]; then
-        env_backup=$(mktemp /tmp/ordervpn-env.XXXXXX)
-        cp "$dest/.env" "$env_backup"
-    fi
-
-    mkdir -p "$dest"
-    rm -rf "${dest}"/*
-
-    if ! tar -xzf "$tmp" -C "$dest" --strip-components=1 2>/dev/null; then
-        echo -e "  ${RED}  Gagal mengekstrak source web${NC}"
-        return 1
-    fi
-
-    if [[ -n "$env_backup" && -f "$env_backup" ]]; then
-        cp "$env_backup" "$dest/.env"
-        rm -f "$env_backup"
-    fi
-
-    chown -R www-data:www-data "$dest"
-    find "$dest" -type d -exec chmod 755 {} \;
-    find "$dest" -type f -exec chmod 644 {} \;
-
-    echo -e "  ${GREEN}  Source web diekstrak ke $dest${NC}"
-    return 0
-}
-
-_ordervpn_setup_db() {
-    local db_name="ordervpn_db"
-    local db_user="ordervpn"
-    local db_pass=""
-
-    if [[ -f /root/.ordervpn_db ]]; then
-        db_pass=$(grep "^DB_PASS=" /root/.ordervpn_db | cut -d= -f2-)
-    elif [[ -f /var/www/html/ordervpn/.env ]]; then
-        db_pass=$(grep "^DB_PASS=" /var/www/html/ordervpn/.env | cut -d= -f2-)
-    fi
-
-    if [[ -z "$db_pass" ]]; then
-        db_pass=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 24)
-    fi
-
-    echo -e "  ${CYAN}Setup database OrderVPN...${NC}"
-
-    if ! command -v mysql >/dev/null 2>&1; then
-        _wait_apt_lock
-        DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server >/dev/null 2>&1 || true
-    fi
-
-    systemctl start mysql 2>/dev/null || systemctl start mariadb 2>/dev/null || true
-
-    local mysql_cmd="mysql -u root"
-    if ! $mysql_cmd -e "SELECT 1" >/dev/null 2>&1; then
-        mysql_cmd="sudo mysql -u root"
-    fi
-
-    $mysql_cmd <<EOF
-CREATE DATABASE IF NOT EXISTS \`${db_name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
-ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
-GRANT ALL PRIVILEGES ON \`${db_name}\`.* TO '${db_user}'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
-    cat > /var/www/html/ordervpn/.env <<EOENV
-DB_HOST=localhost
-DB_USER=${db_user}
-DB_PASS=${db_pass}
-DB_NAME=${db_name}
-EOENV
-    chmod 600 /var/www/html/ordervpn/.env
-    chown www-data:www-data /var/www/html/ordervpn/.env
-
-    if [[ -f "/var/www/html/ordervpn/install.sql" ]]; then
-        $mysql_cmd "${db_name}" < /var/www/html/ordervpn/install.sql
-    fi
-
-    cat > /root/.ordervpn_db <<EODB
-DB_USER=${db_user}
-DB_PASS=${db_pass}
-DB_NAME=${db_name}
-DB_HOST=localhost
-EODB
-    chmod 600 /root/.ordervpn_db
-
-    echo -e "  ${GREEN}  Database OrderVPN ready${NC}"
-}
-
-_ordervpn_nginx_config() {
-    echo -e "  ${CYAN}Setup nginx untuk OrderVPN...${NC}"
-
-    if ! command -v nginx >/dev/null 2>&1; then
-        _wait_apt_lock
-        DEBIAN_FRONTEND=noninteractive apt-get install -y nginx >/dev/null 2>&1 || true
-    fi
-
-    if ! command -v php >/dev/null 2>&1 || ! ls /run/php/php*-fpm.sock >/dev/null 2>&1; then
-        _wait_apt_lock
-        DEBIAN_FRONTEND=noninteractive apt-get install -y php-fpm php-mysql php-mbstring php-xml php-curl php-zip php-gd >/dev/null 2>&1 || true
-    fi
-
-    local php_sock
-    php_sock=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1)
-    if [[ -z "$php_sock" ]]; then
-        for svc in $(systemctl list-unit-files --type=service 2>/dev/null | grep -oP 'php[0-9]+\.[0-9]+-fpm\.service' | sort -u); do
-            systemctl enable --now "${svc%.service}" 2>/dev/null || true
-        done
-        php_sock=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1)
-    fi
-
-    if [[ -z "$php_sock" ]]; then
-        echo -e "  ${YELLOW}  PHP-FPM socket tidak ditemukan, melewati nginx config${NC}"
-        return 1
-    fi
-
-    local cfg_file=""
-    if [[ -f /etc/nginx/sites-enabled/default ]]; then
-        cfg_file="/etc/nginx/sites-enabled/default"
-    else
-        cfg_file=$(find /etc/nginx/sites-enabled -maxdepth 1 -type f | head -1)
-    fi
-
-    if [[ -z "$cfg_file" || ! -f "$cfg_file" ]]; then
-        cfg_file="/etc/nginx/sites-available/default"
-        touch "$cfg_file"
-    fi
-
-    if ! grep -q "# OrderVPN location start" "$cfg_file" 2>/dev/null; then
-        cat >> "$cfg_file" <<"EOCFG"
-
-# OrderVPN location start
-location /ordervpn {
-    root /var/www/html;
-    index index.php index.html;
-    try_files $uri $uri/ /ordervpn/index.php?$query_string;
-
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:__PHP_SOCK__;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /ordervpn/\.(?!well-known).* {
-        deny all;
-    }
-}
-EOCFG
-        sed -i "s|__PHP_SOCK__|${php_sock}|g" "$cfg_file"
-    fi
-
-    nginx -t && systemctl restart nginx
-    echo -e "  ${GREEN}  Nginx config applied${NC}"
-}
 
 # ============================================================
 # MAIN MENU INTERACTIVE
@@ -28355,8 +28162,6 @@ deploy_web_menu() {
     setup_web_domain
     deploy_web_page
     _ordervpn_deploy_files 2>/dev/null || true
-    _ordervpn_setup_db 2>/dev/null || true
-    _ordervpn_nginx_config 2>/dev/null || true
     _ordervpn_security_harden 2>/dev/null || true
     echo -e "  ${GREEN}✔ Web deployed!${NC}"
     sleep 2
