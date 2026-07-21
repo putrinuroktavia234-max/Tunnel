@@ -1,135 +1,280 @@
-# VPN Panel
+# VPN Panel + OrderVPN Web
 
-Standalone binary that installs and manages a multi-protocol VPN server. The binary bundles the full installer and control panel, so you run one file with no separate script to download or read.
+Standalone bash installer untuk VPS Ubuntu yang menginstall dan mengelola server multi-protokol VPN (SSH, VMess, VLess, Trojan) dan web panel OrderVPN untuk penjualan akun otomatis.
 
-This page covers what the panel does, how to install it, every command it exposes, the ports it uses, and how to fix the common failures during setup.
+## Fitur Utama
 
-## Supported systems
+- **VPN Multi-Protokol**: SSH, Dropbear, VMess, VLess, Trojan (WS + gRPC)
+- **UDP Gateway**: BadVPN dan ZI VPN UDP
+- **OrderVPN Web**: Web panel untuk registrasi user, order akun, topup saldo, dan monitoring
+- **Telegram Bot**: Notifikasi dan remote command (opsional)
+- **Auto Install**: Satu script mengurus semua (Xray, Nginx, MySQL, PHP, Web Panel)
 
-The panel runs on Ubuntu. Tested and supported releases:
+## Persyaratan
 
-- Ubuntu 24.04 LTS
-- Ubuntu 22.04 LTS
-- Ubuntu 20.04 LTS
+- VPS Ubuntu 20.04 / 22.04 / 24.04
+- Akses root
+- Minimal 1 GB RAM, 10 GB disk
+- Domain yang sudah di-pointing ke IP VPS (opsional tapi direkomendasikan untuk SSL)
 
-It targets `x86_64` (AMD64) servers. Use the `arm64` build for Oracle Cloud or AWS Graviton instances.
+## Cara Install
 
-## What it runs
-
-The panel manages these services on a single Ubuntu server:
-
-- **SSH access**: OpenSSH on port `22` and Dropbear on port `222`
-- **Proxy protocols**: VMess, VLess, and Trojan, each over WebSocket (WS) and gRPC
-- **UDP tunnels**: BadVPN UDP gateway on ports `7100` to `7300`, plus ZI VPN on `7400` to `7500`
-- **Web stack**: Nginx as the reverse proxy and the OrderVPN web panel on port `8888`
-- **Database**: MySQL or MariaDB stores accounts, orders, and traffic records
-- **Telegram bot**: a Python bot that sends alerts and accepts remote commands
-
-## Requirements
-
-Install on a fresh Ubuntu server. Supported releases: 20.04, 22.04, and 24.04.
-
-- One Ubuntu VPS with a public IPv4 address
-- Root access (`sudo -i` before you start, or run the binary as root)
-- A domain name that points to the server (needed for the WebSocket TLS and gRPC paths and for Let's Encrypt certificates)
-- At least 1 GB of RAM and 10 GB of free disk
-
-The binary targets `x86_64` (AMD64) Linux. Build an `arm64` binary separately if you run Oracle or Graviton instances.
-
-## Install
-
-Download the binary, make it executable, and run it. The first run opens the interactive menu.
+### 1. Download dan Jalankan Script
 
 ```bash
-wget https://github.com/putrinuroktavia234-max/Tunnel/raw/main/vpn
-chmod +x vpn
-./vpn
+wget https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/vpn.sh
+chmod +x vpn.sh
+./vpn.sh
 ```
 
-The menu lists the install option. Select it to provision Nginx, Xray, SSH, Dropbear, the UDP gateways, the database, and the web panel. Setup takes 2 to 5 minutes depending on package download speed.
+Saat pertama kali dijalankan, script akan otomatis masuk ke mode install dan menanyakan domain.
 
-Run the binary as root. It writes to `/usr/local/etc/xray/`, `/etc/nginx/`, and `/root/akun/`, and it registers systemd services. A non-root run aborts with a root-required message.
+### 2. Pilih Domain
 
-## Commands
+Pilih opsi:
+- **Domain sendiri** → masukkan domain seperti `vpn.example.com`
+- **Generate otomatis** → script membuatkan domain nip.io otomatis
 
-The binary accepts a subcommand so you can script it instead of using the menu. Run `./vpn <command>` with the arguments below.
+### 3. Selesaikan Installasi
 
-| Command | What it does |
-| --- | --- |
-| `menu` | Opens the interactive control panel (also the default with no argument) |
-| `install` | Provisions every service on a fresh server |
-| `web` | Deploys the OrderVPN web page and applies server hardening |
-| `security` | Applies CSRF protection, 8-digit OTP, and request rate limits |
-| `status` | Prints CPU, RAM, disk usage, and the state of each service |
-| `list` | Lists every VPN account with its expiry and IP limit |
-| `delete_expired` | Removes accounts past their expiry date (intended for cron) |
-| `backup` | Backs up the database and config to the configured remote store |
-| `restore` | Restores from the most recent backup |
+Installasi akan otomatis menginstall:
+- Xray Core
+- Nginx
+- Dropbear
+- MySQL/MariaDB
+- PHP-FPM + module
+- Web panel OrderVPN
 
-## Account management
+## Cara Menggunakan Menu
 
-Create accounts through the menu or the web panel. Each account carries these fields:
+Setelah installasi selesai, ketik `menu` untuk membuka panel:
 
-- **Username**: 3 to 32 lowercase letters, digits, `-`, or `_`
-- **Password**: 6 to 64 characters
-- **Service**: `ssh`, `vmess`, `vless`, or `trojan`
-- **Protocol**: `ws` or `grpc` for the proxy services
-- **Duration**: 1 to 365 days
-- **IP limit**: 1 to 254 concurrent connections
+```bash
+menu
+```
 
-The `add-user` flow in the menu prompts for each field and writes the record to the database and to the Xray config. Expired accounts stop routing traffic but stay listed until you run `delete_expired`.
+Menu utama akan muncul dengan pilihan 0-24.
+
+| No | Menu | Fungsi |
+|----|------|--------|
+| 1 | SSH / OpenVPN | Kelola akun SSH |
+| 2 | VMess Account | Kelola akun VMess |
+| 3 | VLess Account | Kelola akun VLess |
+| 4 | Trojan Account | Kelola akun Trojan |
+| 5 | List All Accounts | Lihat semua akun |
+| 21 | OrderVPN Web | Deploy web panel OrderVPN |
+| 22 | DDoS Protect | Proteksi DDoS |
+| 23 | Traffic Monitor | Monitoring traffic |
+
+## Menu 21: OrderVPN Web
+
+### Apa itu OrderVPN Web?
+
+OrderVPN Web adalah web panel untuk jualan akun VPN. User bisa:
+- Register/login
+- Verifikasi email via OTP
+- Pesan akun VPN
+- Topup saldo
+- Lihat traffic dan status akun
+
+### Cara Deploy
+
+1. Buka menu:
+   ```bash
+   menu
+   ```
+
+2. Pilih nomor **21** (OrderVPN Web).
+
+3. Pilih opsi domain web:
+   - **Pakai domain sendiri** → masukkan domain seperti `web.example.com`
+   - **Generate otomatis** → script membuatkan domain otomatis
+   - **Pakai domain utama** → pakai domain yang sudah diset sebelumnya
+
+4. Script akan otomatis:
+   - Download source web dari GitHub Release atau file lokal
+   - Verifikasi SHA256 (untuk keamanan)
+   - Ekstrak ke `/var/www/html/ordervpn`
+   - Setup database MySQL
+   - Install PHP-FPM dan module
+   - Setup Nginx config
+   - Menanyakan konfigurasi SMTP untuk email OTP
+
+### Setup SMTP untuk Email OTP
+
+Saat deploy web, script akan menanyakan SMTP untuk kirim email OTP:
+
+```text
+SMTP Host [smtp.gmail.com]: 
+SMTP Port [587]: 
+SMTP User [emailkamu@gmail.com]: 
+SMTP Password (App Password): 
+SMTP From [emailkamu@gmail.com]: 
+SMTP Secure [tls]: 
+```
+
+Untuk **Gmail**, kamu **WAJIB** membuat **App Password**:
+
+1. Buka https://myaccount.google.com/
+2. Pilih **Security**
+3. Aktifkan **2-Step Verification** dulu (wajib)
+4. Cari **App passwords**
+5. Pilih **Mail** dan device, lalu klik **Generate**
+6. Copy password 16 digit, itu yang dimasukkan ke prompt SMTP Password
+
+### Akses Web Panel
+
+Setelah deploy selesai, buka browser:
+
+```text
+https://domain-utama-anda.com/ordervpn
+```
+
+atau jika pakai subdomain:
+
+```text
+https://web.example.com
+```
+
+## Build dan Release Web
+
+### Struktur Web Source
+
+Source web ada di folder:
+
+```
+ordervpn-src/
+├── index.php           # Landing page + auth
+├── dashboard.php     # User dashboard
+├── admin/index.php   # Admin panel
+├── includes/         # Config dan helper
+├── api/              # API endpoint
+├── cron/             # Cron jobs
+├── install.sql       # Database schema
+└── .env.example      # Template environment
+```
+
+### Build Tarball
+
+Setelah mengubah source web, jalankan:
+
+```bash
+bash build.sh
+```
+
+Script ini akan:
+1. Membuat `ordervpn-src.tar.gz`
+2. Hitung SHA256
+3. Update otomatis `ORDERVPN_TAR_SHA256` di `vpn.sh`
+
+### Push ke GitHub
+
+```bash
+git add -A
+git commit -m "deskripsi perubahan"
+git push origin main
+```
+
+### Buat GitHub Release
+
+Supaya menu 21 bisa download web dari GitHub, buat Release:
+
+1. Buka https://github.com/putrinuroktavia234-max/Tunnel/releases
+2. Klik **Draft a new release**
+3. Pilih atau buat tag baru, contoh: `v3.12.0`
+4. Upload file `ordervpn-src.tar.gz` sebagai attachment
+5. Klik **Publish release**
+
+Setelah release dibuat, `vpn.sh` akan otomatis download dari URL release tersebut dan verifikasi SHA256.
+
+## Cara Update Script
+
+Untuk mengupdate script ke versi terbaru:
+
+```bash
+wget -O /root/vpn.sh https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/vpn.sh
+chmod +x /root/vpn.sh
+```
+
+Lalu jalankan `menu` lagi.
+
+## CLI Commands
+
+Selain menu interaktif, script juga bisa dipanggil langsung:
+
+```bash
+./vpn.sh menu           # Buka menu interaktif
+./vpn.sh install        # Installasi awal
+./vpn.sh web            # Deploy web panel
+./vpn.sh security       # Terapkan hardening CSRF/OTP/rate limit
+./vpn.sh status         # Lihat status sistem
+./vpn.sh list           # List semua akun
+./vpn.sh delete_expired # Hapus akun expired (untuk cron)
+```
 
 ## Ports
 
-Open these ports on your firewall and on the provider's security group:
-
 | Port | Service |
-| --- | --- |
-| `22` | OpenSSH |
-| `222` | Dropbear |
-| `80` | Nginx HTTP and Xray WS without TLS |
-| `443` | Nginx HTTPS, Xray WS with TLS, and gRPC |
-| `8080` to `8082` | Xray VMess, VLess, Trojan WS (internal) |
-| `8444` to `8446` | Xray VMess, VLess, Trojan gRPC (internal) |
-| `7100` to `7300` | BadVPN UDP gateway |
-| `7400` to `7500` | ZI VPN UDP gateway |
-| `8888` | OrderVPN web panel |
-
-## Web panel
-
-The web panel runs on port `8888` behind Nginx. It exposes an admin dashboard with user management, server status, order tracking, and balance top-up through Tripay. Three announcement cards are editable from the settings page. A traffic graph built with Chart.js shows daily bandwidth per user.
-
-Set the domain before you deploy the panel so Nginx serves it over HTTPS. Run `./vpn web` after the domain and SSL are in place.
-
-## SSL certificates
-
-The panel uses Let's Encrypt through certbot. Certificates renew automatically on the 1st and 15th of each month via a scheduled cron job. The install step detects your Ubuntu release and container type, then installs certbot from the right source (apt on 22.04 and later, snap fallback only on bare-metal Ubuntu 20.04).
-
-## Backup and restore
-
-`backup` exports the MySQL database and the Xray and Nginx config files to a remote store configured with rclone (Google Drive by default). `restore` replays the latest snapshot. Schedule `delete_expired` and `backup` through cron so expired accounts clear and data stays safe without manual runs.
+|------|---------|
+| 22 | OpenSSH |
+| 222 | Dropbear |
+| 80 | Nginx HTTP |
+| 443 | Nginx HTTPS |
+| 8080-8082 | Xray WS internal |
+| 8444-8446 | Xray gRPC internal |
+| 7100-7300 | BadVPN UDP |
+| 7400-7500 | ZI VPN UDP |
 
 ## Troubleshooting
 
-**The binary won't run: `permission denied`**
-The file lost its executable bit during transfer. Run `chmod +x vpn` again, then retry.
+### Web tidak bisa dibuka
 
-**Install stops at the apt step**
-Another process holds the dpkg lock (`unattended-upgrades` or a previous apt run). The installer waits up to 60 seconds for the lock, then stops `unattended-upgrades` and continues. If it still fails, run `apt-get update` by hand and rerun `./vpn install`.
+1. Cek Nginx status:
+   ```bash
+   systemctl status nginx
+   ```
 
-**Xray fails to start after install**
-Check the config with `journalctl -u xray -n 20`. A wrong domain in `/usr/local/etc/xray/config.json` is the usual cause. Fix the domain file at `/root/domain` and run `./vpn restart xray`.
+2. Cek PHP-FPM status:
+   ```bash
+   systemctl status php*-fpm
+   ```
 
-**SSL issuance fails**
-Let's Encrypt needs the domain's A record to point at the server and port `80` open. Confirm both, then run `./vpn` and pick the SSL option from the menu.
+3. Cek error log:
+   ```bash
+   tail -f /var/log/nginx/error.log
+   ```
 
-**Web panel shows 502**
-Nginx is up but PHP-FPM or the panel process is down. Run `./vpn status` to see which service is off, then `./vpn restart` to bring everything back.
+### Email OTP tidak terkirim
 
-## Credits
+1. Cek konfigurasi SMTP di `/var/www/html/ordervpn/.env`
+2. Pastikan menggunakan **App Password** untuk Gmail, bukan password Gmail biasa
+3. Cek error log PHP:
+   ```bash
+   tail -f /var/log/php*-fpm.log
+   ```
 
-Youzin Crabz Tunel, built by The Professor. Report issues through the project repository.
+### SSL Certificate Error
 
-## License
+1. Pastikan domain sudah pointing ke IP VPS
+2. Pastikan port 80 terbuka
+3. Jalankan menu SSL (nomor 11) untuk fix certificate
 
-Released under the [MIT License](LICENSE). You may use, modify, and distribute the binary and source under the terms in that file.
+## Keamanan
+
+- File `.env` memiliki permission `600`
+- CSRF protection otomatis diaktifkan
+- Rate limiting untuk OTP dan autentikasi
+- SHA256 verification untuk source web yang di-download
+
+## Build dan Kontribusi
+
+Jika ingin mengubah source web:
+
+1. Edit file di `ordervpn-src/`
+2. Jalankan `bash build.sh`
+3. Commit dan push
+4. Buat GitHub Release baru dan upload `ordervpn-src.tar.gz`
+
+## Lisensi
+
+Released under the [MIT License](LICENSE).
