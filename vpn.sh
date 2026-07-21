@@ -28200,15 +28200,15 @@ _ordervpn_setup_smtp() {
     sed -i '/^SMTP_/d' "$env_file"
 
     # Tambahkan baris SMTP baru dengan nilai di-quote
-    cat >> "$env_file" <<'EOSMTP'
-
-SMTP_HOST="${smtp_host}"
-SMTP_PORT="${smtp_port}"
-SMTP_USER="${smtp_user}"
-SMTP_PASS="${smtp_pass}"
-SMTP_FROM="${smtp_from}"
-SMTP_SECURE="${smtp_secure}"
-EOSMTP
+    {
+        echo ""
+        echo "SMTP_HOST=\"${smtp_host}\""
+        echo "SMTP_PORT=\"${smtp_port}\""
+        echo "SMTP_USER=\"${smtp_user}\""
+        echo "SMTP_PASS=\"${smtp_pass}\""
+        echo "SMTP_FROM=\"${smtp_from}\""
+        echo "SMTP_SECURE=\"${smtp_secure}\""
+    } >> "$env_file"
 
     chmod 600 "$env_file"
     chown www-data:www-data "$env_file"
