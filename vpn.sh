@@ -28150,6 +28150,62 @@ EODB
     echo -e "  ${GREEN}  Database OrderVPN ready${NC}"
 }
 
+# ============================================================
+# OrderVPN Web — SMTP Setup Prompt
+# ============================================================
+
+_ordervpn_setup_smtp() {
+    local env_file="/var/www/html/ordervpn/.env"
+    if [[ ! -f "$env_file" ]]; then
+        echo -e "  ${YELLOW}  .env belum ada, melewati setup SMTP${NC}"
+        return 0
+    fi
+
+    echo -e "  ${CYAN}Setup SMTP untuk email OTP...${NC}"
+    echo -e "  ${DIM}Contoh: smtp.gmail.com:587 dengan App Password${NC}"
+    echo ""
+
+    local smtp_host smtp_port smtp_user smtp_pass smtp_from smtp_secure
+
+    read -rp "  SMTP Host [smtp.gmail.com]: " smtp_host
+    smtp_host="${smtp_host:-smtp.gmail.com}"
+
+    read -rp "  SMTP Port [587]: " smtp_port
+    smtp_port="${smtp_port:-587}"
+
+    read -rp "  SMTP User [emailkamu@gmail.com]: " smtp_user
+    smtp_user="${smtp_user:-emailkamu@gmail.com}"
+
+    read -rsp "  SMTP Password (App Password): " smtp_pass
+    echo ""
+
+    read -rp "  SMTP From [${smtp_user}]: " smtp_from
+    smtp_from="${smtp_from:-${smtp_user}}"
+
+    read -rp "  SMTP Secure [tls]: " smtp_secure
+    smtp_secure="${smtp_secure:-tls}"
+
+    # Hapus baris SMTP lama jika ada
+    sed -i '/^SMTP_/d' "$env_file"
+
+    # Tambahkan baris SMTP baru
+    cat >> "$env_file" <<'EOSMTP'
+
+SMTP_HOST=${smtp_host}
+SMTP_PORT=${smtp_port}
+SMTP_USER=${smtp_user}
+SMTP_PASS=${smtp_pass}
+SMTP_FROM=${smtp_from}
+SMTP_SECURE=${smtp_secure}
+EOSMTP
+
+    chmod 600 "$env_file"
+    chown www-data:www-data "$env_file"
+
+    echo -e "  ${GREEN}  SMTP config disimpan${NC}"
+}
+
+
 _ordervpn_nginx_config() {
     echo -e "  ${CYAN}Setup nginx untuk OrderVPN...${NC}"
 
@@ -28356,6 +28412,7 @@ deploy_web_menu() {
     deploy_web_page
     _ordervpn_deploy_files 2>/dev/null || true
     _ordervpn_setup_db 2>/dev/null || true
+    _ordervpn_setup_smtp 2>/dev/null || true
     _ordervpn_nginx_config 2>/dev/null || true
     _ordervpn_security_harden 2>/dev/null || true
     echo -e "  ${GREEN}✔ Web deployed!${NC}"
