@@ -28165,13 +28165,24 @@ _ordervpn_setup_smtp() {
     echo -e "  ${DIM}Contoh: smtp.gmail.com:587 dengan App Password${NC}"
     echo ""
 
+    local skip
+    read -rp "  Konfigurasi SMTP sekarang? [Y/n]: " skip
+    if [[ "$skip" =~ ^[Nn] ]]; then
+        echo -e "  ${YELLOW}  Setup SMTP dilewati${NC}"
+        return 0
+    fi
+
     local smtp_host smtp_port smtp_user smtp_pass smtp_from smtp_secure
 
     read -rp "  SMTP Host [smtp.gmail.com]: " smtp_host
     smtp_host="${smtp_host:-smtp.gmail.com}"
 
-    read -rp "  SMTP Port [587]: " smtp_port
-    smtp_port="${smtp_port:-587}"
+    while true; do
+        read -rp "  SMTP Port [587]: " smtp_port
+        smtp_port="${smtp_port:-587}"
+        [[ "$smtp_port" =~ ^[0-9]+$ ]] && break
+        echo -e "  ${RED}  Port harus angka${NC}"
+    done
 
     read -rp "  SMTP User [emailkamu@gmail.com]: " smtp_user
     smtp_user="${smtp_user:-emailkamu@gmail.com}"
@@ -28188,15 +28199,15 @@ _ordervpn_setup_smtp() {
     # Hapus baris SMTP lama jika ada
     sed -i '/^SMTP_/d' "$env_file"
 
-    # Tambahkan baris SMTP baru
+    # Tambahkan baris SMTP baru dengan nilai di-quote
     cat >> "$env_file" <<'EOSMTP'
 
-SMTP_HOST=${smtp_host}
-SMTP_PORT=${smtp_port}
-SMTP_USER=${smtp_user}
-SMTP_PASS=${smtp_pass}
-SMTP_FROM=${smtp_from}
-SMTP_SECURE=${smtp_secure}
+SMTP_HOST="${smtp_host}"
+SMTP_PORT="${smtp_port}"
+SMTP_USER="${smtp_user}"
+SMTP_PASS="${smtp_pass}"
+SMTP_FROM="${smtp_from}"
+SMTP_SECURE="${smtp_secure}"
 EOSMTP
 
     chmod 600 "$env_file"
@@ -28204,6 +28215,7 @@ EOSMTP
 
     echo -e "  ${GREEN}  SMTP config disimpan${NC}"
 }
+
 
 
 _ordervpn_nginx_config() {
@@ -28412,7 +28424,7 @@ deploy_web_menu() {
     deploy_web_page
     _ordervpn_deploy_files 2>/dev/null || true
     _ordervpn_setup_db 2>/dev/null || true
-    _ordervpn_setup_smtp 2>/dev/null || true
+    _ordervpn_setup_smtp
     _ordervpn_nginx_config 2>/dev/null || true
     _ordervpn_security_harden 2>/dev/null || true
     echo -e "  ${GREEN}✔ Web deployed!${NC}"
