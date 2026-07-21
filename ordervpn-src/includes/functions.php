@@ -3,6 +3,14 @@
 // OrderVPN — Helper Functions
 // ============================================================
 
+// Load PHPMailer once at bootstrap
+$__phpmailer_dir = __DIR__ . '/PHPMailer';
+if (is_dir($__phpmailer_dir)) {
+    require_once $__phpmailer_dir . '/PHPMailer.php';
+    require_once $__phpmailer_dir . '/SMTP.php';
+    require_once $__phpmailer_dir . '/Exception.php';
+}
+
 function loadEnv(): void {
     $envFile = __DIR__ . '/../.env';
     if (!file_exists($envFile)) return;
@@ -78,10 +86,6 @@ function sendEmail(string $to, string $subject, string $body): bool {
     $phpmailerDir = __DIR__ . '/PHPMailer';
 
     if ($host && $user && $pass && is_dir($phpmailerDir)) {
-        require_once $phpmailerDir . '/PHPMailer.php';
-        require_once $phpmailerDir . '/SMTP.php';
-        require_once $phpmailerDir . '/Exception.php';
-
         $mail = new PHPMailer\PHPMailer\PHPMailer(true);
         try {
             $mail->isSMTP();

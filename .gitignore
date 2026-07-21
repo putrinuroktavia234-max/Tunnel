@@ -1,2 +1,5 @@
 ordervpn_web/.env
 ordervpn_web/includes/config.php.bak
+.github_token
+vpn.sh.bak
+ordervpn-src.tar.gz
