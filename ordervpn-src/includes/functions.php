@@ -101,7 +101,7 @@ function sendEmail(string $to, string $subject, string $body): bool {
             $mail->Subject = $subject;
             $mail->Body    = $body;
             return $mail->send();
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             error_log('PHPMailer error: ' . $e->getMessage());
             return false;
         }
