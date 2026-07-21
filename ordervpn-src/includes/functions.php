@@ -69,9 +69,43 @@ function csrfField(): string {
 }
 
 function sendEmail(string $to, string $subject, string $body): bool {
+    $host = env('SMTP_HOST', '');
+    $user = env('SMTP_USER', '');
+    $pass = env('SMTP_PASS', '');
+    $from = env('SMTP_FROM', 'noreply@example.com');
+
+    // PHPMailer path inside web source
+    $phpmailerDir = __DIR__ . '/PHPMailer';
+
+    if ($host && $user && $pass && is_dir($phpmailerDir)) {
+        require_once $phpmailerDir . '/PHPMailer.php';
+        require_once $phpmailerDir . '/SMTP.php';
+        require_once $phpmailerDir . '/Exception.php';
+
+        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $host;
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $user;
+            $mail->Password   = $pass;
+            $mail->SMTPSecure = env('SMTP_SECURE', 'tls');
+            $mail->Port       = (int) env('SMTP_PORT', '587');
+            $mail->setFrom($from, env('APP_NAME', 'OrderVPN'));
+            $mail->addAddress($to);
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body    = $body;
+            return $mail->send();
+        } catch (Exception $e) {
+            error_log('PHPMailer error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    // Fallback ke mail() native jika SMTP belum diset
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-    $from = env('SMTP_FROM', 'noreply@example.com');
     $headers .= "From: {$from}\r\n";
     return mail($to, $subject, $body, $headers);
 }
