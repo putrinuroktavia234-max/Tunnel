@@ -28,7 +28,7 @@ $action = $input['action'] ?? '';
 if ($action === 'register') {
     $host = sanitize($input['host'] ?? '');
     $code = sanitize($input['code_server'] ?? '');
-    $nama = sanitize($input['nama_server'] ?? '');
+    $nama = sanitize($input['name'] ?? '');
     $lokasi = sanitize($input['lokasi'] ?? 'Unknown');
     $flag = sanitize($input['flag'] ?? '🌐');
     $domain = sanitize($input['domain'] ?? '');
@@ -46,11 +46,11 @@ if ($action === 'register') {
     $chk->execute([$code]);
     if ($chk->fetch()) {
         // Update existing
-        $db->prepare("UPDATE servers SET host=?, nama_server=?, lokasi=?, flag=?, domain=?, status='ready' WHERE code_server=?")
+        $db->prepare("UPDATE servers SET host=?, name=?, lokasi=?, flag=?, domain=?, status='ready' WHERE code_server=?")
            ->execute([$host, $nama, $lokasi, $flag, $domain, $code]);
     } else {
         // Insert new
-        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,domain,status)
+        $db->prepare("INSERT INTO servers (name,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,domain,status)
             VALUES (?,?,?,?,300,9000,?,22,'root',?,'ready')")
            ->execute([$nama, $code, $lokasi, $flag, $host, $domain]);
     }

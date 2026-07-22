@@ -134,8 +134,8 @@ try {
 
     // Notif Telegram
     $notifMsg = $isTrial
-        ? "[POWER] <b>Trial Baru</b>\nUser: {$username}\nTipe: {$tipe}\nServer: {$server['nama_server']}"
-        : "[CART] <b>Order Baru</b>\nUser: {$username}\nTipe: {$tipe}\nServer: {$server['nama_server']}\nDurasi: {$days} hari\nTotal: ".formatRupiah($harga);
+        ? "[POWER] <b>Trial Baru</b>\nUser: {$username}\nTipe: {$tipe}\nServer: {$server['name']}"
+        : "[CART] <b>Order Baru</b>\nUser: {$username}\nTipe: {$tipe}\nServer: {$server['name']}\nDurasi: {$days} hari\nTotal: ".formatRupiah($harga);
     sendTelegramNotif($notifMsg);
 
     echo json_encode($result);
