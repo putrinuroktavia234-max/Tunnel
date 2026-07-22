@@ -122,3 +122,17 @@ function requireLogin(): array {
     }
     return $_SESSION;
 }
+
+function requireAdmin(): array {
+    $session = requireLogin();
+    if (($session['role'] ?? '') !== 'admin') {
+        http_response_code(403);
+        echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>403 Forbidden</title></head>';
+        echo '<body style="background:#090C10;color:#00FFAA;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">';
+        echo '<div style="text-align:center;"><pre style="color:#F85149;">[ ERR ] 403 FORBIDDEN</pre>';
+        echo '<p style="color:#8B949E;">Akses ditolak. Hanya admin yang diizinkan.</p>';
+        echo '<a href="/ordervpn/dashboard.php" style="color:#00FFAA;">[ Kembali ke Dashboard ]</a></div></body></html>';
+        exit;
+    }
+    return $session;
+}

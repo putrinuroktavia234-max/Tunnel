@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $emailBody = "<div style='font-family:monospace;background:#090C10;color:#00FFAA;padding:32px;'><p>Reset Password untuk <b>{$user['username']}</b>:</p><div style='font-size:32px;letter-spacing:12px;text-align:center;margin:24px 0;color:#00FFAA;'>{$otp}</div><p style='color:#8B949E;font-size:10px;'>BERLAKU 15 MENIT</p></div>";
                 sendEmail($e, "Reset Password - {$appName}", $emailBody);
             }                $success        = 'Jika email terdaftar, kode reset password telah dikirim ke inbox Anda. Cek juga folder spam.';
-                $triggerReset   = true; // route flag — NOT echoed, used only by auto-switch JS below
+                if ($user) $triggerReset = true;
         }
     }
 
