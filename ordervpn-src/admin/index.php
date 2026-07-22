@@ -44,7 +44,7 @@ if (isset($_GET['ajax_monitor_single'])) {
         $out = shell_exec($cmd);
         $data = json_decode($out, true);
         if ($data && !empty($data['success'])) {
-            $data['name'] = 'VPS Lokal (Master)';
+            $data['nama_server'] = 'VPS Lokal (Master)';
             $data['code_server'] = 'local';
             echo json_encode($data);
         } else {
@@ -56,7 +56,7 @@ if (isset($_GET['ajax_monitor_single'])) {
         $s = $srv->fetch();
         if ($s) {
             $mon = fetchServerMonitor($s['id'], $s['code_server'], $s['host'], $s['port'], $s['ssh_user'], $s['ssh_password'], $s['ssh_key']);
-            $mon['name'] = $s['name'];
+            $mon['nama_server'] = $s['nama_server'];
             $mon['code_server'] = $s['code_server'];
             echo json_encode($mon);
         } else {
@@ -70,9 +70,9 @@ if (isset($_GET['ajax_monitor_list'])) {
     // Return list of server codes for JS to fetch individually
     header('Content-Type: application/json');
     $codes = [['code' => 'local', 'name' => 'VPS Lokal (Master)']];
-    $servers = $db->query("SELECT code_server, name FROM servers WHERE status='ready' ORDER BY name")->fetchAll();
+    $servers = $db->query("SELECT code_server, nama_server FROM servers WHERE status='ready' ORDER BY nama_server")->fetchAll();
     foreach ($servers as $s) {
-        $codes[] = ['code' => $s['code_server'], 'name' => $s['name']];
+        $codes[] = ['code' => $s['code_server'], 'name' => $s['nama_server']];
     }
     echo json_encode($codes);
     exit;
@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $pass = '';
         }
         $code    = sanitize($_POST['code_server'] ?? '');
-        $nama    = sanitize($_POST['name'] ?? '');
+        $nama    = sanitize($_POST['nama_server'] ?? '');
         
         if (empty($ip) || empty($pass) || empty($code)) {
             header('Location: /admin/?auto_error=' . urlencode('IP, Password, dan Kode Server wajib diisi'));
@@ -178,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         }
         
         // Simpan ke database
-        $db->prepare("INSERT INTO servers (name,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,domain,status)
+        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,domain,status)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,'ready',this)")
            ->execute([
                $nama,
@@ -200,9 +200,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
     
 if ($act==='add_server') {
-        $db->prepare("INSERT INTO servers (name,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,ssh_key,domain,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ready',this)")
+        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,ssh_key,domain,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ready',this)")
            ->execute([
-               sanitize($_POST['name']), sanitize($_POST['code_server']),
+               sanitize($_POST['nama_server']), sanitize($_POST['code_server']),
                sanitize($_POST['lokasi']), sanitize($_POST['flag']??'🇮🇩'),
                (float)$_POST['harga_hari'], (float)$_POST['harga_bulan'],
                sanitize($_POST['host']), (int)($_POST['port']??22),
@@ -300,13 +300,13 @@ $stats = [
 
 $pendingTopups = $db->query("SELECT tr.*, u.username, u.email FROM topup_requests tr JOIN users u ON tr.user_id=u.id WHERE tr.status='pending' ORDER BY tr.created_at DESC")->fetchAll();
 $allTopups     = $db->query("SELECT tr.*, u.username FROM topup_requests tr JOIN users u ON tr.user_id=u.id ORDER BY tr.created_at DESC LIMIT 50")->fetchAll();
-$servers       = $db->query("SELECT * FROM servers ORDER BY name")->fetchAll();
+$servers       = $db->query("SELECT * FROM servers ORDER BY nama_server")->fetchAll();
 $vpsNodes      = $db->query("SELECT * FROM servers WHERE last_heartbeat IS NOT NULL OR code_server LIKE 'sv%' ORDER BY last_heartbeat DESC")->fetchAll();
 $wildcardDomains = $db->query("SELECT * FROM wildcard_domains ORDER BY created_at DESC")->fetchAll();
 $promoCodes   = $db->query("SELECT * FROM promo_codes ORDER BY created_at DESC")->fetchAll();
 $users         = $db->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 100")->fetchAll();
 $orders        = $db->query("SELECT t.*, u.username FROM transactions t JOIN users u ON t.user_id=u.id WHERE t.type='order' ORDER BY t.created_at DESC LIMIT 50")->fetchAll();
-$allAkuns      = $db->query("SELECT va.*, u.username as uname, s.name FROM vpn_accounts va JOIN users u ON va.user_id=u.id JOIN servers s ON va.server_id=s.id ORDER BY va.created_at DESC LIMIT 50")->fetchAll();
+$allAkuns      = $db->query("SELECT va.*, u.username as uname, s.nama_server FROM vpn_accounts va JOIN users u ON va.user_id=u.id JOIN servers s ON va.server_id=s.id ORDER BY va.created_at DESC LIMIT 50")->fetchAll();
 
 $_adminUser = $db->prepare("SELECT avatar FROM users WHERE id=?");
 $_adminUser->execute([$session['user_id']]); $_adminUser = $_adminUser->fetch();
@@ -526,7 +526,7 @@ $saved   = isset($_GET['saved']);
             <input type="hidden" name="action" value="auto_detect_server">
             
             <div class="grid2">
-            <div><label>Nama Server</label><input name="name" placeholder="BIZNET IDC" required></div>
+            <div><label>Nama Server</label><input name="nama_server" placeholder="BIZNET IDC" required></div>
             <div><label>Kode Server</label><input name="code_server" placeholder="sgp1" required></div>
             <div><label>Lokasi</label><input name="lokasi" placeholder="Singapura" required></div>
             <div><label>Flag Emoji</label><input name="flag" placeholder="&#x1F1F8;&#x1F1EC;" value="&#x1F1EE;&#x1F1E9;"></div>
@@ -554,7 +554,7 @@ $saved   = isset($_GET['saved']);
             <tbody>
             <?php foreach($servers as $s):?>
             <tr data-server="<?=$s['code_server']?>">
-              <td><strong><?=esc($s['name'])?></strong><br><span style="color:var(--muted);font-size:.72rem"><?=esc($s['code_server'])?></span></td>
+              <td><strong><?=esc($s['nama_server'])?></strong><br><span style="color:var(--muted);font-size:.72rem"><?=esc($s['code_server'])?></span></td>
               <td class="mon-ping" data-code="<?=$s['code_server']?>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
               </td>
@@ -697,7 +697,7 @@ $saved   = isset($_GET['saved']);
               <td><?=esc($a['uname'])?></td>
               <td style="font-family:monospace"><?=esc($a['username'])?><?=$a['is_trial']?' (Trial)':''?></td>
               <td><span class="badge b-active"><?=strtoupper($a['tipe'])?></span></td>
-              <td><?=esc($a['name'])?></td>
+              <td><?=esc($a['nama_server'])?></td>
               <td style="font-size:.75rem"><?=date('d M Y H:i',strtotime($a['masa_aktif']))?></td>
               <td><span class="badge b-<?=$a['status']?>"><?=$a['status']?></span></td>
             </tr>
@@ -1143,7 +1143,7 @@ $saved   = isset($_GET['saved']);
               $statusLabel = $isOnline ? 'Online' : (empty($node['last_heartbeat']) ? 'Pending' : 'Offline');
             ?>
             <tr>
-              <td><strong><?=esc($node['name']?:$node['code_server'])?></strong></td>
+              <td><strong><?=esc($node['nama_server']?:$node['code_server'])?></strong></td>
               <td><code style="font-size:.8rem;opacity:.7"><?=esc($node['code_server'])?></code></td>
               <td><code style="font-size:.8rem"><?=esc($node['host'])?></code></td>
               <td><?=esc($node['flag'])?> <?=esc($node['lokasi'])?></td>

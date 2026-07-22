@@ -140,14 +140,3 @@ INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES
 
 INSERT IGNORE INTO users (username, email, password, saldo, role, is_verified) VALUES
 ('admin', 'admin@ordervpn.local', 'TO_BE_REPLACED_BY_INSTALL', 999999.00, 'admin', 1);
-
--- Rate limiting
-CREATE TABLE IF NOT EXISTS login_attempts (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    ip_address VARCHAR(45) NOT NULL,
-    username VARCHAR(100) DEFAULT "",
-    action VARCHAR(50) NOT NULL DEFAULT "login",
-    success TINYINT(1) NOT NULL DEFAULT 0,
-    attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_ip_action (ip_address, action, success, attempted_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
