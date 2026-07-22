@@ -233,6 +233,9 @@ PAYMENT_FILE="/root/.payment_info"
 DOMAIN_TYPE_FILE="/root/domain_type"
 
 
+WEB_DOMAIN_FILE="/root/domain_web"
+
+
 
 SYSTEM_INFO_CACHE="/root/.sysinfo_cache"
 
@@ -28341,19 +28344,150 @@ run_health_check() {
     echo ""; read -rp "  Tekan Enter..."
 }
 
+# ── Helper: OrderVPN Status Check ──
+_ordervpn_status() {
+    local installed=0
+    local WEB_DIR="/var/www/html/ordervpn"
+    local DB_FILE="/root/.ordervpn_db"
+    local ENV_FILE="$WEB_DIR/.env"
+
+    [[ -d "$WEB_DIR" && -f "$ENV_FILE" ]] && installed=1
+
+    if [[ $installed -eq 0 ]]; then
+        echo -e "  ${YELLOW}● OrderVPN: BELUM TERINSTALL${NC}"
+        return 1
+    fi
+
+    # Baca domain
+    local web_domain=""
+    if [[ -f "$WEB_DOMAIN_FILE" ]]; then
+        web_domain=$(tr -d '\n\r' < "$WEB_DOMAIN_FILE" | xargs)
+    elif [[ -f "$DOMAIN_FILE" ]]; then
+        web_domain=$(tr -d '\n\r' < "$DOMAIN_FILE" | xargs)
+    fi
+    [[ -z "$web_domain" ]] && web_domain=$(get_ip)
+
+    # Tentukan protocol
+    local proto="http"
+    [[ -d "/etc/letsencrypt/live/$web_domain" ]] && proto="https"
+
+    WEB_URL="${proto}://${web_domain}/ordervpn"
+
+    local W; W=$(get_width)
+
+    echo ""
+    _box_top $W
+    _box_center $W "${GREEN}${BOLD}✦  ORDERVPN WEB STATUS  ✦${NC}"
+    _box_divider $W
+    echo -e "  ${WHITE}Status${NC}      : ${GREEN}✔ TERINSTALL${NC}"
+    echo -e "  ${WHITE}URL Web${NC}    : ${CYAN}${WEB_URL}${NC}"
+    echo -e "  ${WHITE}Direktori${NC}   : ${DIM}${WEB_DIR}${NC}"
+    _box_divider $W
+
+    # Info database
+    if [[ -f "$DB_FILE" ]]; then
+        local db_name db_user
+        db_name=$(grep "^DB_NAME=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
+        db_user=$(grep "^DB_USER=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
+        echo -e "  ${WHITE}Database${NC}    : ${GREEN}${db_name:-?}${NC} (user: ${db_user:-?})"
+    fi
+    _box_bottom $W
+    echo ""
+
+    return 0
+}
+
 # ── Helper: Deploy Web Menu ──
 deploy_web_menu() {
     clear
     print_menu_header "ORDERVPN WEB"
+
+    # Cek apakah sudah terinstall
+    if [[ -d "/var/www/html/ordervpn" && -f "/var/www/html/ordervpn/.env" ]]; then
+        # Sudah terinstall — tampilkan status + sub-menu
+        _ordervpn_status
+
+        local W; W=$(get_width)
+        _box_top $W
+        _box_center $W "${YELLOW}${BOLD}ORDERVPN MENU${NC}"
+        _box_divider $W
+        echo -e "  ${CYAN}[1]${NC} ${WHITE}Lihat Info & URL${NC}"
+        echo -e "  ${CYAN}[2]${NC} ${WHITE}Reinstall / Update Web${NC}"
+        echo -e "  ${CYAN}[3]${NC} ${WHITE}Konfigurasi SMTP${NC}"
+        echo -e "  ${CYAN}[4]${NC} ${WHITE}Security Hardening${NC}"
+        echo -e "  ${CYAN}[5]${NC} ${WHITE}Ganti Domain Web${NC}"
+        echo -e "  ${RED}[0]${NC} ${WHITE}Kembali ke Menu Utama${NC}"
+        _box_bottom $W
+        echo ""
+
+        read -rp "  Pilih [0-5]: " web_opt
+        case $web_opt in
+            1) _ordervpn_status; echo ""; read -rp "  Tekan Enter..."; deploy_web_menu ;;
+            2)
+                echo -e "\n  ${CYAN}⏳ Reinstall OrderVPN Web...${NC}"
+                setup_web_domain
+                deploy_web_page
+                _ordervpn_deploy_files
+                _ordervpn_setup_db
+                _ordervpn_setup_smtp
+                _ordervpn_nginx_config
+                _ordervpn_security_harden
+                echo ""
+                echo -e "  ${GREEN}✔ Reinstall selesai!${NC}"
+                _ordervpn_status
+                echo ""; read -rp "  Tekan Enter..."
+                deploy_web_menu
+                ;;
+            3) _ordervpn_setup_smtp; deploy_web_menu ;;
+            4) _ordervpn_security_harden; echo ""; read -rp "  Tekan Enter..."; deploy_web_menu ;;
+            5) setup_web_domain; deploy_web_page; _ordervpn_nginx_config; deploy_web_menu ;;
+            0) return ;;
+            *) deploy_web_menu ;;
+        esac
+        return
+    fi
+
+    # Belum terinstall — jalankan instalasi
+    echo -e "  ${YELLOW}OrderVPN belum terinstall. Memulai instalasi...${NC}\n"
+
     setup_web_domain
     deploy_web_page
-    _ordervpn_deploy_files 2>/dev/null || true
-    _ordervpn_setup_db 2>/dev/null || true
+
+    echo -e "\n  ${CYAN}━━━ Step 1/5: Deploy File Web ━━━${NC}"
+    _ordervpn_deploy_files || echo -e "  ${RED}✘ Gagal deploy file!${NC}"
+
+    echo -e "\n  ${CYAN}━━━ Step 2/5: Setup Database ━━━${NC}"
+    _ordervpn_setup_db || echo -e "  ${RED}✘ Gagal setup database!${NC}"
+
+    echo -e "\n  ${CYAN}━━━ Step 3/5: Setup SMTP ━━━${NC}"
     _ordervpn_setup_smtp
-    _ordervpn_nginx_config 2>/dev/null || true
-    _ordervpn_security_harden 2>/dev/null || true
-    echo -e "  ${GREEN}✔ Web deployed!${NC}"
-    sleep 2
+
+    echo -e "\n  ${CYAN}━━━ Step 4/5: Setup Nginx ━━━${NC}"
+    _ordervpn_nginx_config || echo -e "  ${RED}✘ Gagal setup nginx!${NC}"
+
+    echo -e "\n  ${CYAN}━━━ Step 5/5: Security Hardening ━━━${NC}"
+    _ordervpn_security_harden || echo -e "  ${YELLOW}⚠ Security hardening skipped${NC}"
+
+    # Tampilkan hasil
+    echo ""
+    echo -e "  ${GREEN}${BOLD}✔ OrderVPN Web berhasil diinstall!${NC}"
+    echo ""
+
+    _ordervpn_status
+
+    # Tampilkan admin credential jika ada
+    if [[ -f /root/.ordervpn_admin ]]; then
+        local admin_pass
+        admin_pass=$(cat /root/.ordervpn_admin 2>/dev/null)
+        echo -e "  ${WHITE}Admin Login${NC}  : ${CYAN}${WEB_URL}/admin/${NC}"
+        echo -e "  ${WHITE}Username${NC}     : ${GREEN}admin${NC}"
+        echo -e "  ${WHITE}Password${NC}     : ${GREEN}${admin_pass}${NC}"
+        echo ""
+    fi
+
+    echo -e "  ${YELLOW}⚠ Simpan informasi di atas!${NC}"
+    echo ""
+    read -rp "  Tekan Enter untuk kembali..."
 }
 
 # ============================================================
