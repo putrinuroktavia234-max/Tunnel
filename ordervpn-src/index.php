@@ -1,805 +1,262 @@
 <?php
-// ============================================================
-// OrderVPN - Landing + Auth (single file)
-// Tema: Midnight Console — Bahasa Indonesia
-// CATATAN: Jangan ubah name/input/POST action — contract backend
-// ============================================================
 require_once __DIR__.'/includes/config.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
-
-// Handle logout BEFORE the redirect check (so logged-in users don't bounce back to dashboard)
-if (isset($_GET['logout'])) {
-    $_SESSION = [];
-    if (ini_get('session.use_cookies')) {
-        $params = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $params['path'], $params['domain'],
-            $params['secure'], $params['httponly']);
-    }
-    session_destroy();
-    header('Location: index.php?logged_out=1');
-    exit;
-}
-
-if (isset($_SESSION['user_id'])) { header('Location: /ordervpn/dashboard.php'); exit; }
+if (isset($_SESSION['user_id'])) { header('Location: /dashboard.php'); exit; }
 
 $appName = getSetting('app_name','OrderVPN');
-$error   = '';
-$success = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-
-    // ----- LOGIN -----
-    if ($action === 'login') {
-        $u = sanitize($_POST['username'] ?? '');
-        $p = $_POST['password'] ?? '';
-        if (empty($u) || empty($p)) { $error = 'Username dan password wajib diisi!'; }
-        else {
-            $db = getDB();
-            $st = $db->prepare("SELECT * FROM users WHERE username=? OR email=?");
-            $st->execute([$u, $u]);
-            $user = $st->fetch();
-            if ($user && password_verify($p, $user['password'])) {
-                if (!$user['is_verified'] && $user['role'] === 'user') {
-                    $error = 'Email belum diverifikasi! Cek inbox kamu.';
-                } else {
-                    $_SESSION['user_id']  = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['role']     = $user['role'];
-                    $_SESSION['saldo']    = $user['saldo'];
-                    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
-                    $db->prepare("UPDATE users SET ip_address=? WHERE id=?")->execute([$ip, $user['id']]);
-                    header('Location: /ordervpn/dashboard.php');
-                    exit;
-                }
-            } else { $error = 'Username atau password salah!'; }
-        }
-    }
-
-    // ----- REGISTER -----
-    if ($action === 'register') {
-        $u = sanitize($_POST['reg_username'] ?? '');
-        $e = sanitize($_POST['reg_email'] ?? '');
-        $p = $_POST['reg_password'] ?? '';
-        $c = $_POST['reg_confirm'] ?? '';
-        if (empty($u) || empty($e) || empty($p)) {
-            $error = 'Semua field wajib diisi!';
-        } elseif ($p !== $c) {
-            $error = 'Password tidak cocok!';
-        } elseif (strlen($p) < 6) {
-            $error = 'Password minimal 6 karakter!';
-        } elseif (!filter_var($e, FILTER_VALIDATE_EMAIL)) {
-            $error = 'Format email tidak valid!';
-        } else {
-            $db  = getDB();
-            $chk = $db->prepare("SELECT id FROM users WHERE username=? OR email=?");
-            $chk->execute([$u, $e]);
-            if ($chk->fetch()) {
-                $error = 'Username atau email sudah digunakan!';
-            } else {
-                $otp    = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-                $otpExp = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-                $hash   = password_hash($p, PASSWORD_BCRYPT);
-                try {
-                    $db->prepare("INSERT INTO users (username,email,password,otp_code,otp_expires,is_verified) VALUES (?,?,?,?,?,0)")
-                       ->execute([$u, $e, $hash, $otp, $otpExp]);
-                } catch (PDOException $ex) {
-                    if ($ex->getCode() == 23000) {
-                        $error = 'Username atau email sudah terdaftar!';
-                    } else { throw $ex; }
-                }
-                if (empty($error)) {
-                    $emailBody = "
-                    <div style='font-family:monospace;max-width:480px;margin:0 auto;background:#090C10;color:#00FFAA;padding:32px;'>
-                      <pre style='margin:0;color:#00FFAA;'>[ OrderVPN ]</pre>
-                      <p style='color:#8B949E;margin:8px 0 24px;'>Verifikasi akun kamu.</p>
-                      <div style='background:#131920;border-left:3px solid #00FFAA;padding:24px;margin:24px 0;text-align:center;'>
-                        <p style='color:#8B949E;font-size:11px;margin-bottom:8px;letter-spacing:.2em;'>KODE OTP:</p>
-                        <div style='font-size:36px;font-weight:700;letter-spacing:14px;color:#00FFAA;font-family:monospace;'>{$otp}</div>
-                        <p style='color:#8B949E;font-size:10px;margin-top:12px;'>BERLAKU 15 MENIT</p>
-                      </div>
-                      <p style='color:#8B949E;font-size:10px;'>Abaikan email ini jika kamu tidak mendaftar.</p>
-                    </div>";
-                    sendEmail($e, "Kode OTP Verifikasi - {$appName}", $emailBody);
-                    $success = 'Akun berhasil dibuat! Cek email untuk kode OTP verifikasi.';
-                }
-            }
-        }
-    }
-
-    // ----- VERIFY OTP -----
-    if ($action === 'verify_otp') {
-        $e   = sanitize($_POST['otp_email'] ?? '');
-        $otp = sanitize($_POST['otp_code'] ?? '');
-        $db  = getDB();
-        $st  = $db->prepare("SELECT * FROM users WHERE email=? AND otp_code=? AND otp_expires > NOW()");
-        $st->execute([$e, $otp]);
-        $user = $st->fetch();
-        if ($user) {
-            $db->prepare("UPDATE users SET is_verified=1, otp_code=NULL, otp_expires=NULL WHERE id=?")
-               ->execute([$user['id']]);
-            $success = 'Email berhasil diverifikasi! Silakan login.';
-        } else { $error = 'Kode OTP salah atau sudah expired!'; }
-    }
-
-    // ----- RESEND OTP -----
-    if ($action === 'resend_otp') {
-        $e  = sanitize($_POST['resend_email'] ?? '');
-        $db = getDB();
-        $st = $db->prepare("SELECT * FROM users WHERE email=? AND is_verified=0");
-        $st->execute([$e]);
-        $user = $st->fetch();
-        if ($user) {
-            $otp    = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-            $otpExp = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-            $db->prepare("UPDATE users SET otp_code=?, otp_expires=? WHERE id=?")
-               ->execute([$otp, $otpExp, $user['id']]);
-            $emailBody = "<div style='font-family:monospace;background:#090C10;color:#00FFAA;padding:32px;'><p>Kode OTP Baru:</p><div style='font-size:32px;letter-spacing:12px;text-align:center;margin:24px 0;'>{$otp}</div><p style='color:#8B949E;font-size:10px;'>BERLAKU 15 MENIT</p></div>";
-            sendEmail($e, "Kode OTP Baru - {$appName}", $emailBody);
-            $success = 'OTP baru sudah dikirim ke email kamu.';
-        } else { $error = 'Email tidak ditemukan atau sudah terverifikasi.'; }
-    }
-
-    // ----- FORGOT PASSWORD -----
-    if ($action === 'forgot_password') {
-        $e = sanitize($_POST['forgot_email'] ?? '');
-        if (empty($e) || !filter_var($e, FILTER_VALIDATE_EMAIL)) {
-            $error = 'Masukkan email yang valid!';
-        } else {
-            $db = getDB();
-            $st = $db->prepare("SELECT * FROM users WHERE email=?");
-            $st->execute([$e]);
-            $user = $st->fetch();
-            if ($user) {
-                $otp    = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
-                $otpExp = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-                $db->prepare("UPDATE users SET otp_code=?, otp_expires=? WHERE id=?")
-                   ->execute([$otp, $otpExp, $user['id']]);
-                $emailBody = "<div style='font-family:monospace;background:#090C10;color:#00FFAA;padding:32px;'><p>Reset Password untuk <b>{$user['username']}</b>:</p><div style='font-size:32px;letter-spacing:12px;text-align:center;margin:24px 0;color:#00FFAA;'>{$otp}</div><p style='color:#8B949E;font-size:10px;'>BERLAKU 15 MENIT</p></div>";
-                sendEmail($e, "Reset Password - {$appName}", $emailBody);
-            }                $success        = 'Jika email terdaftar, kode reset password telah dikirim ke inbox Anda. Cek juga folder spam.';
-                if ($user) $triggerReset = true;
-        }
-    }
-
-    // ----- RESET PASSWORD -----
-  if ($action === 'reset_password') {
-        $e   = sanitize($_POST['reset_email'] ?? '');
-        $otp = sanitize($_POST['reset_otp'] ?? '');
-        $np  = $_POST['new_password'] ?? '';
-        $cp  = $_POST['confirm_password'] ?? '';
-        if (empty($e) || empty($otp) || empty($np)) {
-            $error = 'Semua field wajib diisi!';
-        } elseif (strlen($np) < 6) {
-            $error = 'Password baru minimal 6 karakter!';
-        } elseif ($np !== $cp) {
-            $error = 'Password tidak cocok!';
-        } else {
-            $db = getDB();
-            $st = $db->prepare("SELECT * FROM users WHERE email=? AND otp_code=? AND otp_expires > NOW()");
-            $st->execute([$e, $otp]);
-            $user = $st->fetch();
-            if ($user) {
-                $hash = password_hash($np, PASSWORD_BCRYPT);
-                $db->prepare("UPDATE users SET password=?, otp_code=NULL, otp_expires=NULL WHERE id=?")
-                   ->execute([$hash, $user['id']]);
-                $success = 'Password berhasil direset! Silakan login dengan password baru Anda.';
-            } else {
-                $error = 'Kode OTP salah atau sudah expired!';
-            }
-        }
-    }
+try {
+    $db = getDB();
+    $stats = [
+        'member' => $db->query("SELECT COUNT(*) FROM users")->fetchColumn() ?: 0,
+        'tunnel' => $db->query("SELECT COUNT(*) FROM orders WHERE status='active'")->fetchColumn() ?: 0,
+        'server' => $db->query("SELECT COUNT(*) FROM servers WHERE status='active'")->fetchColumn() ?: 0,
+        'transaksi' => $db->query("SELECT COUNT(*) FROM orders")->fetchColumn() ?: 0,
+    ];
+} catch (Exception $e) {
+    $stats = ['member'=>0,'tunnel'=>0,'server'=>0,'transaksi'=>0];
 }
+function icon($p,$s=18){return '<svg width="'.$s.'" height="'.$s.'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'.$p.'</svg>';}
+function featureIcon($p){return '<div class="feature-icon">'.icon($p,20).'</div>';}
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($appName) ?> — Hardened Tunnel Infrastructure</title>
-<meta name="description" content="OrderVPN - Infrastruktur tunneling multi-protokol. SSH, VMess, VLess, Trojan, ZIVPN. Aktivasi instan via Tripay.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23090C10%22/><text x=%2250%22 y=%2270%22 font-size=%2270%22 text-anchor=%22middle%22 fill=%22%2300FFAA%22>%26gt;_</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/ordervpn.css?v=3.12.0">
+<title><?=$appName?> — Layanan Tunneling Premium</title>
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#070b14;--bg2:#0a0f1e;--card:rgba(255,255,255,0.03);
+  --border:rgba(255,255,255,0.06);--text:#f1f5f9;--text2:#94a3b8;--text3:#475569;
+  --accent:#6366f1;--accent-l:#818cf8;--purple:#8b5cf6;
+  --glow:rgba(99,102,241,0.3);--radius:16px;--r-sm:10px;--r-xs:6px;
+  --transition:0.3s ease;
+}
+html{scroll-behavior:smooth}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+/* Navbar */
+.navbar{position:fixed;top:0;left:0;right:0;z-index:100;padding:0.8rem 2rem;display:flex;align-items:center;justify-content:space-between;background:rgba(7,11,20,0.85);border-bottom:1px solid rgba(255,255,255,0.05);transition:var(--transition)}
+.navbar .logo{display:flex;align-items:center;gap:0.6rem;font-size:1.15rem;font-weight:800;color:var(--text);text-decoration:none}
+.nav-links{display:flex;gap:2rem;list-style:none}
+.nav-links a{color:var(--text2);text-decoration:none;font-size:0.85rem;font-weight:500;transition:var(--transition);position:relative}
+.nav-links a::after{content:'';position:absolute;bottom:-4px;left:0;width:0;height:2px;background:var(--accent);border-radius:2px;transition:var(--transition)}
+.nav-links a:hover{color:var(--text)}.nav-links a:hover::after{width:100%}
+.nav-actions{display:flex;gap:0.6rem}
+.btn{display:inline-flex;align-items:center;gap:0.4rem;padding:0.55rem 1.25rem;border-radius:var(--r-sm);font-size:0.82rem;font-weight:600;font-family:inherit;cursor:pointer;transition:var(--transition);text-decoration:none;border:none}
+.btn-ghost{color:var(--text2);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)}
+.btn-ghost:hover{color:var(--text);background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.15)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--purple));color:#fff;box-shadow:0 4px 20px var(--glow)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px var(--glow)}
+.hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;background:none;border:none;padding:4px}
+.hamburger span{width:22px;height:2px;background:var(--text2);border-radius:2px;transition:var(--transition)}
+
+/* Hero */
+.hero{min-height:60vh;display:flex;align-items:center;position:relative;overflow:hidden;padding:5rem 2rem 3rem}
+.hero-orb{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(100px);opacity:0.1;pointer-events:none;will-change:transform}
+.hero-orb:nth-child(1){background:var(--accent);top:-150px;left:-100px;animation:orb 20s ease-in-out infinite}
+.hero-orb:nth-child(2){background:var(--purple);bottom:-150px;right:-100px;animation:orb 25s ease-in-out infinite reverse}
+@keyframes orb{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-30px)}}
+.hero-content{position:relative;z-index:1;max-width:800px;margin:0 auto;text-align:center;animation:fadeUp 0.8s ease both}
+.hero-badge{display:inline-flex;align-items:center;gap:0.4rem;padding:0.35rem 0.9rem;border-radius:100px;font-size:0.75rem;font-weight:600;background:rgba(99,102,241,0.12);color:var(--accent-l);border:1px solid rgba(99,102,241,0.2);margin-bottom:1.5rem}
+.hero h1{font-size:3.5rem;font-weight:900;line-height:1.1;letter-spacing:-0.04em;margin-bottom:1rem;background:linear-gradient(135deg,#f8fafc 30%,#c7d2fe 70%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{font-size:1.1rem;color:var(--text2);line-height:1.7;max-width:560px;margin:0 auto 2rem}
+.hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.hero-actions .btn{padding:0.75rem 2rem;font-size:0.9rem}
+
+/* Section */
+.section{padding:5rem 2rem;position:relative}
+.section-header{text-align:center;max-width:600px;margin:0 auto 3.5rem}
+.section-header h2{font-size:2rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:0.75rem}
+.section-header p{color:var(--text2);font-size:0.95rem;line-height:1.6}
+
+/* Features */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;max-width:1100px;margin:0 auto}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.75rem;transition:var(--transition);animation:fadeUp 0.6s ease both}
+.feature-card:hover{border-color:rgba(99,102,241,0.2);transform:translateY(-3px);box-shadow:0 12px 48px rgba(0,0,0,0.3)}
+.feature-icon{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;margin-bottom:1rem;color:#fff}
+.feature-card h3{font-size:1rem;font-weight:700;margin-bottom:0.4rem}
+.feature-card p{font-size:0.82rem;color:var(--text2);line-height:1.6}
+
+/* Pricing */
+.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;max-width:1100px;margin:0 auto}
+.pricing-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:2rem;text-align:center;transition:var(--transition);animation:fadeUp 0.6s ease both;position:relative}
+.pricing-card.featured{border-color:var(--accent);box-shadow:0 0 40px rgba(99,102,241,0.1)}
+.pricing-card.featured::before{content:'Terpopuler';position:absolute;top:-12px;left:50%;transform:translateX(-50%);padding:0.25rem 1rem;border-radius:100px;font-size:0.68rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--purple));color:#fff;text-transform:uppercase;letter-spacing:0.06em}
+.pricing-card:hover{transform:translateY(-4px);border-color:rgba(99,102,241,0.2)}
+.pricing-card h3{font-size:1.1rem;font-weight:700;margin-bottom:0.25rem}
+.pricing-card .server-loc{font-size:0.78rem;color:var(--text3);margin-bottom:1rem;display:flex;align-items:center;justify-content:center;gap:0.3rem}
+.pricing-card .price{font-size:2.5rem;font-weight:900;letter-spacing:-0.03em;color:var(--accent-l);margin-bottom:0.2rem}
+.pricing-card .price-sub{font-size:0.78rem;color:var(--text3);margin-bottom:1.25rem}
+.pricing-card .features-list{list-style:none;text-align:left;margin-bottom:1.5rem}
+.pricing-card .features-list li{padding:0.45rem 0;font-size:0.82rem;color:var(--text2);display:flex;align-items:center;gap:0.5rem;border-bottom:1px solid rgba(255,255,255,0.04)}
+.pricing-card .features-list li:first-child{border-top:1px solid rgba(255,255,255,0.04)}
+.pricing-card .features-list li::before{content:'';width:16px;height:16px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");flex-shrink:0}
+.pricing-card .btn{width:100%;justify-content:center;padding:0.7rem}
+
+/* Process */
+.process{display:grid;grid-template-columns:repeat(3,1fr);gap:2rem;max-width:900px;margin:0 auto}
+.process-step{text-align:center;animation:fadeUp 0.6s ease both}
+.process-step .num{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:800;margin:0 auto 1rem;box-shadow:0 8px 24px var(--glow);color:#fff}
+.process-step h3{font-size:1rem;font-weight:700;margin-bottom:0.4rem}
+.process-step p{font-size:0.82rem;color:var(--text2);line-height:1.5;max-width:280px;margin:0 auto}
+
+/* FAQ */
+.faq{max-width:700px;margin:0 auto}
+.faq-item{border-bottom:1px solid var(--border)}
+.faq-q{padding:1rem 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:0.9rem;font-weight:600;color:var(--text);transition:var(--transition);background:none;border:none;width:100%;text-align:left;font-family:inherit}
+.faq-q:hover{color:var(--accent-l)}
+.faq-q svg{flex-shrink:0;color:var(--text3);transition:var(--transition)}
+.faq-q.active svg{transform:rotate(180deg)}
+.faq-a{padding:0 0 1rem 0;font-size:0.85rem;color:var(--text2);line-height:1.7;display:none}
+.faq-a.show{display:block;animation:fadeUp 0.3s ease}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;max-width:900px;margin:0 auto;padding:2rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+.stat-item{text-align:center}
+.stat-item .num{font-size:2rem;font-weight:900;color:var(--accent-l)}
+.stat-item .label{font-size:0.78rem;color:var(--text2);margin-top:0.25rem}
+
+/* Footer */
+.footer{border-top:1px solid var(--border);padding:3rem 2rem 1.5rem;margin-top:3rem}
+.footer-grid{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:2rem;margin-bottom:2rem}
+.footer-brand h3{font-size:1rem;font-weight:800;margin-bottom:0.5rem}
+.footer-brand p{font-size:0.82rem;color:var(--text2);line-height:1.6;max-width:300px}
+.footer-col h4{font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:1rem}
+.footer-col a{display:block;font-size:0.82rem;color:var(--text2);text-decoration:none;padding:0.3rem 0;transition:var(--transition)}
+.footer-col a:hover{color:var(--accent-l)}
+.footer-bottom{text-align:center;padding-top:1.5rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text3)}
+
+/* Animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.feature-card:nth-child(1){animation-delay:0s}
+.feature-card:nth-child(2){animation-delay:0.08s}
+.feature-card:nth-child(3){animation-delay:0.16s}
+.feature-card:nth-child(4){animation-delay:0.24s}
+.feature-card:nth-child(5){animation-delay:0.32s}
+.feature-card:nth-child(6){animation-delay:0.4s}
+.pricing-card:nth-child(1){animation-delay:0s}
+.pricing-card:nth-child(2){animation-delay:0.1s}
+.pricing-card:nth-child(3){animation-delay:0.2s}
+.process-step:nth-child(1){animation-delay:0s}
+.process-step:nth-child(2){animation-delay:0.15s}
+.process-step:nth-child(3){animation-delay:0.3s}
+
+/* Responsive */
+@media(max-width:768px){
+  .nav-links,.nav-actions{display:none}
+  .hamburger{display:flex}
+  .hero h1{font-size:2.2rem}
+  .hero p{font-size:0.95rem}
+  .features,.pricing,.process{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .footer-grid{grid-template-columns:1fr;text-align:center}
+  .footer-brand p{margin:0 auto}
+}
+@media(max-width:480px){.hero{padding:5rem 1rem 3rem}.section{padding:3rem 1rem}}
+.mobile-open .nav-links{display:flex;flex-direction:column;position:fixed;top:60px;left:0;right:0;background:rgba(7,11,20,0.98);padding:1.5rem 2rem;border-bottom:1px solid var(--border);gap:1rem}
+.mobile-open .nav-actions{display:flex;position:fixed;top:330px;left:0;right:0;padding:0 2rem 1.5rem;background:rgba(7,11,20,0.98);border-bottom:1px solid var(--border)}
+</style>
 </head>
 <body>
 
-<!-- ============================================================
-     SIGNATURE ELEMENT: Routing Line (left edge)
-     ============================================================ -->
-<aside class="routing-line" aria-hidden="true">
-  <div class="routing-node" style="top: 8%"><span class="routing-label">[ 01 ] Hero</span></div>
-  <div class="routing-node" style="top: 26%"><span class="routing-label">[ 02 ] Protocols</span></div>
-  <div class="routing-node" style="top: 50%"><span class="routing-label">[ 03 ] Pricing</span></div>
-  <div class="routing-node" style="top: 70%"><span class="routing-label">[ 04 ] Bootstrap</span></div>
-  <div class="routing-node" style="top: 88%"><span class="routing-label">[ 05 ] FAQ &amp; Metrics</span></div>
-</aside>
+<nav class="navbar" id="navbar">
+  <a href="#" class="logo">
+    <?=icon('<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2"/>',22)?>
+    <?=$appName?>
+  </a>
 
-<!-- ============================================================
-     NAV
-     ============================================================ -->
-<nav class="nav" role="navigation">
-  <div class="nav-brand">
-    <span class="prompt">&gt;_</span><span class="name"><?= htmlspecialchars($appName) ?></span>
-    <span class="ver">v3.12.0</span>
-  </div>
   <div class="nav-actions">
-    <button class="btn" type="button" onclick="openAuth('login')">[ Autentikasi ]</button>
-    <button class="btn btn-primary" type="button" onclick="openAuth('register')">[ Deploy Akun ]</button>
+    <a href="login.php" class="btn btn-ghost"><?=icon('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>')?> Masuk</a>
+    <a href="login.php?register=1" class="btn btn-primary">Daftar <?=icon('<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>')?></a>
   </div>
+  <button class="hamburger" id="hamburger" onclick="document.getElementById('navbar').classList.toggle('mobile-open')">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
 
-<!-- ============================================================
-     HERO
-     ============================================================ -->
-<header class="hero">
-  <div class="hero-eyebrow"><span class="dot"></span>SYSTEM ONLINE • UPTIME 99.97%</div>
-  <h1>Jalur Privat<br><span class="accent">Kecepatan Tinggi.</span></h1>
-  <p class="lead">Infrastruktur tunneling kelas server. Bypass DPI, enkripsi berlapis, dan kontrol penuh dari satu panel — tanpa intervensi manual, tanpa biaya tersembunyi.</p>
-  <div class="hero-actions">
-    <button class="btn btn-yellow" type="button" onclick="openAuth('register')">[ Mulai Sekarang ]</button>
-    <a href="#pricing" class="btn">[ Lihat Topologi ]</a>
-  </div>
-  <div class="hero-stats">
-    <div class="stat-mini"><strong>14</strong>NODE AKTIF</div>
-    <div class="stat-mini"><strong>3 REGION</strong>SG / ID / GLOBAL</div>
-    <div class="stat-mini"><strong>6 PROTOKOL</strong>XRAY NATIVE</div>
-    <div class="stat-mini"><strong>INSTAN</strong>AKTIVASI VIA TRIPAY</div>
-  </div>
-</header>
-
-<!-- ============================================================
-     [02] FEATURES
-     ============================================================ -->
-<section id="protocols">
-  <div class="container">
-    <div class="section-eyebrow">[ 02 // Protocols &amp; Capability ]</div>
-    <h2 class="section-title">Arsitektur Multi-Protokol.</h2>
-    <p class="section-sub">Enam pilar yang menjadi fondasi setiap tunnel yang kami deploy. Bukan jargon marketing — ini capabilities yang dieksekusi otomatis oleh installer kami.</p>
-    <div class="features-grid">
-      <div class="feature">
-        <div class="feature-num">[01]</div>
-        <h3>Multi-Protocol Native</h3>
-        <p>Dukungan natif XRAY, VMess, VLess, Trojan, Dropbear SSH, dan ZIVPN dalam satu panel terpadu.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-num">[02]</div>
-        <h3>Bypass Pemblokiran ISP</h3>
-        <p>Obfuscation tingkat kernel. Tembus limitasi ISP tanpa proksi berlapis yang menambah latensi.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-num">[03]</div>
-        <h3>Panel Otonom</h3>
-        <p>Manajemen durasi, batas IP, dan rotasi sesi otomatis. Tidak ada antrian konfirmasi admin.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-num">[04]</div>
-        <h3>Failover Berlapis</h3>
-        <p>Node geographically distributed. Script keep-alive memantau koneksi dan restart otomatis saat anomali.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-num">[05]</div>
-        <h3>Enkripsi Berlapis</h3>
-        <p>Rotasi TLS fingerprint harian. Isolated credential namespace per akun. Dump trafik nol-persisten.</p>
-      </div>
-      <div class="feature">
-        <div class="feature-num">[06]</div>
-        <h3>Gateway Pembayaran</h3>
-        <p>Integrasi Tripay. Aktivasi otomatis begitu invoice lunas — tanpa kontak manual, tanpa delay.</p>
-      </div>
+<section class="hero" id="hero">
+  <div class="hero-orb"></div>
+  <div class="hero-orb"></div>
+  <div class="hero-content">
+    <div class="hero-badge"><?=icon('<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',14)?> Premium VPN Service Indonesia</div>
+    <h1>Layanan Tunneling Terbaik</h1>
+    <p>Nikmati berselancar dengan layanan tunneling terbaik. SSH, Trojan, VMess, VLess, dan UDP Custom dengan harga termurah.</p>
+    <div class="hero-actions">
+      <a href="login.php?register=1" class="btn btn-primary">Daftar Sekarang <?=icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>')?></a>
+      <a href="login.php" class="btn btn-ghost"><?=icon('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>')?> Masuk</a>
     </div>
   </div>
 </section>
 
-<!-- ============================================================
-     [03] PRICING
-     ============================================================ -->
-<section id="pricing">
-  <div class="container">
-    <div class="section-eyebrow">[ 03 // Topology &amp; Pricing ]</div>
-    <h2 class="section-title">Pilih Jalur. Sesuaikan Beban.</h2>
-    <p class="section-sub">Tiga topologi dengan karakteristik berbeda. Migrasi kapan saja gratis dengan cooldown 15 menit antar perpindahan server.</p>
-    <div class="pricing-grid">
-      <div class="price-card">
-        <div class="price-region">[ SG — CORE NODE ]</div>
-        <h3 class="price-name">Singapore Premium</h3>
-        <div class="price-tier">
-          <span class="amount">Rp 10.000</span><span class="unit">/ bulan</span>
-          <div class="secondary">atau Rp 15.62 / jam (Pay-As-You-Go)</div>
-        </div>
-        <ul class="price-features">
-          <li>Port 1 Gbps unmetered</li>
-          <li>Singapore datacenter premium IP</li>
-          <li>Xray VMess / VLess / Trojan</li>
-          <li>WebSocket + gRPC transport</li>
-          <li>Wildcard domain support</li>
-          <li>Maks 2 device concurrent</li>
-        </ul>
-        <button class="btn btn-full" type="button" onclick="openAuth('register')">[ Deploy Sekarang ]</button>
-      </div>
-
-      <div class="price-card featured">
-        <div class="price-region">[ ID — LOCAL ROUTE ]</div>
-        <h3 class="price-name">Indonesia Local</h3>
-        <div class="price-tier">
-          <span class="amount yellow">Rp 12.500</span><span class="unit">/ bulan</span>
-          <div class="secondary">atau Rp 19.09 / jam (Pay-As-You-Go)</div>
-        </div>
-        <ul class="price-features">
-          <li>Latensi lokal &lt;20ms ke server nasional</li>
-          <li>ID datacenter routing</li>
-          <li>SSH OpenSSH + Dropbear included</li>
-          <li>UDP Custom gateway aktif</li>
-          <li>Cocok untuk streaming &amp; game lokal</li>
-          <li>Maks 2 device concurrent</li>
-        </ul>
-        <button class="btn btn-full btn-yellow" type="button" onclick="openAuth('register')">[ Deploy Sekarang ]</button>
-      </div>
-
-      <div class="price-card">
-        <div class="price-region">[ GLOBAL — MULTI PATH ]</div>
-        <h3 class="price-name">Always-On Multi</h3>
-        <div class="price-tier">
-          <span class="amount">Rp 15.000</span><span class="unit">/ 135 GB</span>
-          <div class="secondary">bandwidth rollover enabled</div>
-        </div>
-        <ul class="price-features">
-          <li>Akses seluruh region aktif</li>
-          <li>IP rotation otomatis per sesi</li>
-          <li>Cocok untuk kebutuhan konten global</li>
-          <li>Priority queue saat kepadatan tinggi</li>
-          <li>Support ZIVPN UDP gateway</li>
-          <li>Maks 2 device concurrent</li>
-        </ul>
-        <button class="btn btn-full" type="button" onclick="openAuth('register')">[ Deploy Sekarang ]</button>
-      </div>
-    </div>
+<section class="section" id="layanan">
+  <div class="section-header">
+    <h2>Layanan & Fitur Terlengkap</h2>
+    <p>Dengan sistem yang fleksibel, kamu bisa mengelola akun tunnel dengan mudah tanpa ribet.</p>
+  </div>
+  <div class="features">
+    <div class="feature-card"><?=featureIcon('<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>')?><h3>Tampilan Responsif</h3><p>Tampilan yang responsif dan mudah dipahami di perangkat apapun.</p></div>
+    <div class="feature-card"><?=featureIcon('<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>')?><h3>Pelayanan Terbaik</h3><p>Nikmati pelayanan dengan respon cepat dan terbaik dari tim kami.</p></div>
+    <div class="feature-card"><?=featureIcon('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>')?><h3>Berbagai Protokol</h3><p>Tersedia SSH, Trojan, VMess, VLess, UDP Custom dan ZIVPN.</p></div>
+    <div class="feature-card"><?=featureIcon('<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>')?><h3>Pembayaran Mudah</h3><p>Sistem serba otomatis dengan berbagai metode pembayaran lengkap.</p></div>
+    <div class="feature-card"><?=featureIcon('<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>')?><h3>Sistem Billing</h3><p>Berlangganan bulanan, mingguan, atau bayar sesuai pemakaian (Pay As Go).</p></div>
+    <div class="feature-card"><?=featureIcon('<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>')?><h3>Harga Terbaik</h3><p>Nikmati layanan dengan harga terbaik di kelasnya, tanpa biaya tersembunyi.</p></div>
   </div>
 </section>
 
-<!-- ============================================================
-     [04] HOW-TO
-     ============================================================ -->
-<section id="bootstrap">
-  <div class="container">
-    <div class="section-eyebrow">[ 04 // Onboarding ]</div>
-    <h2 class="section-title">Tiga Langkah. Tanpa Antre.</h2>
-    <p class="section-sub">Proses dari registrasi hingga tunnel aktif dirancang untuk selesai dalam waktu kurang dari satu menit.</p>
-    <div class="howto-grid">
-      <div class="step">
-        <h3>Registrasi Kredensial</h3>
-        <p>Buat akun dengan email valid. Verifikasi OTP otomatis tanpa kontak admin dan tanpa dokumen tambahan.</p>
-      </div>
-      <div class="step">
-        <h3>Tentukan Topologi</h3>
-        <p>Pilih region server dan paket langganan. Auto-renew tersedia bila saldo dompet mencukupi di akhir siklus.</p>
-      </div>
-      <div class="step">
-        <h3>Injeksi Koneksi</h3>
-        <p>Konfigurasi ter-generate otomatis. Tempel ke aplikasi client pilihan — tunnel aktif seketika tanpa restart.</p>
-      </div>
-    </div>
+
+
+<section class="section" style="padding-bottom:2rem">
+  <div class="section-header">
+    <h2>Mulai Berlangganan Sekarang</h2>
+    <p>Dapatkan akun tunneling kamu dengan cepat dan mudah dalam 3 langkah.</p>
+  </div>
+  <div class="process">
+    <div class="process-step"><div class="num">1</div><h3>Daftarkan Akun</h3><p>Buat akun kamu dengan cepat dan mudah tanpa proses yang ribet.</p></div>
+    <div class="process-step"><div class="num">2</div><h3>Pilih Server</h3><p>Tentukan server tunnel yang kamu inginkan sebelum melakukan pembayaran.</p></div>
+    <div class="process-step"><div class="num">3</div><h3>Nikmati Layanan</h3><p>Buat akun tunnel dan langsung rasakan layanan tunnel terbaik dari kami.</p></div>
   </div>
 </section>
 
-<!-- ============================================================
-     [05] FAQ
-     ============================================================ -->
-<section id="faq">
-  <div class="container">
-    <div class="section-eyebrow">[ 05 // Knowledge Base ]</div>
-    <h2 class="section-title">Pertanyaan yang Sering Muncul.</h2>
-    <p class="section-sub">Tidak menemukan jawaban yang kamu butuhkan? Kontak admin via Telegram atau WhatsApp untuk respon cepat 24/7.</p>
 
-    <div class="faq-group">
-      <div class="faq-group-title">[ Generale ]</div>
-      <details class="faq-item">
-        <summary>Apakah trafik saya di-logging di server?</summary>
-        <div class="answer">Tidak. Kami tidak menyimpan log koneksi atau record destination apapun. Session berakhir ketika tunnel dimatikan, dan metadata koneksi hanya tersedia di memory process — tidak dipersistensi ke disk sama sekali.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Bagaimana cara kerja sistem batas IP secara teknis?</summary>
-        <div class="answer">Sistem menghitung sesi aktif berdasarkan session identifier unik per device. Saat device ketiga mencoba konek, sesi terlama diputus secara otomatis. Tidak ada intervensi manual yang diperlukan.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Apakah kredensial bisa digunakan di STB atau OpenWrt router?</summary>
-        <div class="answer">Ya. Konfigurasi yang ter-generate kompatibel dengan aplikasi client mainstream — termasuk STB Android, router OpenWrt dengan passwall/shadowsocks-libev, dan seluruh klien resmi Xray / V2RayNG di mobile.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Berapa lama waktu aktivasi setelah pembayaran?</summary>
-        <div class="answer">Seketika. Gateway Tripay mengirim callback ke server begitu invoice berstatus lunas. Akun di-upgrade ke tier berbayar secara otomatis tanpa antrian approval.</div>
-      </details>
-    </div>
 
-    <div class="faq-group">
-      <div class="faq-group-title">[ Lanjutan ]</div>
-      <details class="faq-item">
-        <summary>Bisakah saya migrasi server tanpa membuat akun baru?</summary>
-        <div class="answer">Bisa. Perubahan server tunduk pada cooldown 15 menit antar migrasi untuk mencegah churning akun. Perpindahan protokol berlaku untuk layanan Trojan, VMess, dan VLess tanpa downtime.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Bagaimana aturan auto-renew di akhir masa aktif?</summary>
-        <div class="answer">Jika saldo dompet Anda cukup dan auto-renew aktif, sistem akan memperpanjang otomatis. Anda menerima notifikasi 3 hari sebelumnya melalui bot Telegram dan email.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Apakah ada batasan jumlah akun yang boleh saya buat?</summary>
-        <div class="answer">Tidak ada batas kuantitas akun per identitas. Anda dapat berlangganan multipel akun aktif secara simultan tanpa batasan administratif apapun dari sisi kami.</div>
-      </details>
-    </div>
+<section class="section" id="faq">
+  <div class="section-header">
+    <h2>Pertanyaan Umum</h2>
+    <p>Jika ada pertanyaan yang belum terjawab, hubungi support WhatsApp kami.</p>
+  </div>
+  <div class="faq">
+    <div class="faq-item"><button class="faq-q" onclick="toggleFaq(this)">Apakah akun tunnel diaktifkan secara instan?<?=icon('<polyline points="6 9 12 15 18 9"/>')?></button><div class="faq-a">Ya, akun tunnel akan langsung aktif tanpa harus menunggu persetujuan. Kamu bisa langsung menikmati layanan setelah pembayaran berhasil.</div></div>
+    <div class="faq-item"><button class="faq-q" onclick="toggleFaq(this)">Apakah bisa berpindah server dan protokol?<?=icon('<polyline points="6 9 12 15 18 9"/>')?></button><div class="faq-a">Server dapat diubah dengan interval 15 menit. Perpindahan protokol tersedia untuk layanan Trojan, VMess, dan VLess.</div></div>
+    <div class="faq-item"><button class="faq-q" onclick="toggleFaq(this)">Berapa batas login sesi setiap akun tunnel?<?=icon('<polyline points="6 9 12 15 18 9"/>')?></button><div class="faq-a">Setiap akun tunnel hanya diizinkan maksimal 2 perangkat. Khusus STB, hanya diperbolehkan 1 STB dan 1 perangkat lainnya.</div></div>
+    <div class="faq-item"><button class="faq-q" onclick="toggleFaq(this)">Apakah bisa melakukan perpanjangan otomatis?<?=icon('<polyline points="6 9 12 15 18 9"/>')?></button><div class="faq-a">Kamu dapat mengaktifkan auto renew pada setelan akun tunnel. Pastikan saldo cukup pada saat tanggal masa aktif tiba.</div></div>
+    <div class="faq-item"><button class="faq-q" onclick="toggleFaq(this)">Mode berlangganan tersedia apa saja?<?=icon('<polyline points="6 9 12 15 18 9"/>')?></button><div class="faq-a">Tersedia langganan bulanan, mingguan, dan Pay As Go (bayar sesuai pemakaian per jam).</div></div>
   </div>
 </section>
 
-<!-- ============================================================
-     STATS
-     ============================================================ -->
-<section id="stats">
-  <div class="container">
-    <div class="stats-grid">
-      <div class="stat">
-        <span class="stat-num" data-target="14">0</span>
-        <span class="stat-label">[ Node Aktif ]</span>
-      </div>
-      <div class="stat">
-        <span class="stat-num" data-target="2847">0</span>
-        <span class="stat-label">[ Tunnel Tereksekusi ]</span>
-      </div>
-      <div class="stat">
-        <span class="stat-num" data-target="36">0</span>
-        <span class="stat-label">[ Volume Trafik TB ]</span>
-      </div>
-      <div class="stat">
-        <span class="stat-num" data-target="9210">0</span>
-        <span class="stat-label">[ Transaksi Selesai ]</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     FOOTER
-     ============================================================ -->
-<footer class="footer" role="contentinfo">
+<footer class="footer">
   <div class="footer-grid">
-    <div class="footer-col">
-      <h4>[ Infrastruktur ]</h4>
-      <p>Single-binary installer</p>
-      <p>Multi-region failover</p>
-      <p>Auto-renew engine</p>
-      <p>Tripay payment gateway</p>
-      <p>Telegram bot integration</p>
-    </div>
-
-    <div class="footer-col">
-      <h4>[ Pengumuman ]</h4>
-      <?php
-      $announcements = [];
-      for ($i = 1; $i <= 3; $i++) {
-        $a = getSetting('announce_'.$i, '');
-        if (!empty($a) && strpos($a, '|') !== false) {
-          list($tag, $text) = explode('|', $a, 2);
-          $announcements[] = ['tag' => trim($tag), 'text' => trim($text)];
-        }
-      }
-      if (empty($announcements)):
-      ?>
-        <div class="announce-item">
-          <span class="tag">NEW</span>
-          <p>Trial 3 hari untuk user baru. Hubungi admin untuk aktivasi awal tanpa biaya.</p>
-        </div>
-        <div class="announce-item yellow">
-          <span class="tag">PROMO</span>
-          <p>Diskon 25% untuk paket ID Local bulan ini. Berlaku hingga akhir bulan.</p>
-        </div>
-        <div class="announce-item">
-          <span class="tag">INFO</span>
-          <p>Server baru Japan Tokyo dan SG-2 sudah aktif. Auto-rotated via panel.</p>
-        </div>
-      <?php else:
-        $yellowTags = ['PROMO', 'DISKON', 'BONUS'];
-        foreach ($announcements as $a):
-          $isYellow = in_array(strtoupper($a['tag']), $yellowTags);
-      ?>
-        <div class="announce-item<?= $isYellow ? ' yellow' : '' ?>">
-          <span class="tag"><?= htmlspecialchars(strtoupper($a['tag'])) ?></span>
-          <p><?= htmlspecialchars($a['text']) ?></p>
-        </div>
-      <?php endforeach; endif; ?>
-    </div>
-
-    <div class="footer-col">
-      <h4>[ Kontak ]</h4>
-      <a href="https://t.me/<?= urlencode(ltrim(getSetting('contact_tg','@ordervpn_admin'), '@')) ?>" target="_blank" rel="noopener">
-        Telegram: <?= htmlspecialchars(getSetting('contact_tg','@ordervpn_admin')) ?>
-      </a>
-      <a href="https://wa.me/<?= preg_replace('/[^0-9]/','', getSetting('contact_wa','081234567890')) ?>" target="_blank" rel="noopener">
-        WhatsApp: <?= htmlspecialchars(getSetting('contact_wa','0812-3456-7890')) ?>
-      </a>
-      <p>Response time: &lt; 30 menit</p>
-      <p>Layanan: 24/7</p>
-    </div>
+    <div class="footer-brand"><h3><?=$appName?></h3><p>Layanan Tunneling Premium Indonesia. Berselancar dengan aman di dunia internet dengan tunneling terbaik.</p></div>
+    <div class="footer-col"><h4>Layanan</h4><a href="#layanan">SSH</a><a href="#layanan">Trojan</a><a href="#layanan">VMess</a><a href="#layanan">VLess</a></div>
+    <div class="footer-col"><h4>Halaman</h4><a href="#hero">Beranda</a><a href="#harga">Harga</a><a href="login.php">Masuk</a><a href="login.php?register=1">Daftar</a></div>
+    <div class="footer-col"><h4>Kontak</h4><a href="#">Telegram: <?=esc(getSetting('contact_tg','@ordervpn_admin'))?></a><a href="#">WhatsApp: <?=esc(getSetting('contact_wa','0812-3456-7890'))?></a></div>
   </div>
-
-  <div class="footer-meta">
-    &gt;_&nbsp;<span class="text-cyan"><?= htmlspecialchars($appName) ?></span>
-    &nbsp;//&nbsp;powered by Youzin Crabz Tunel
-    &nbsp;//&nbsp;v3.12.0
-    &nbsp;//&nbsp;build_commit: 7f7a62c
-  </div>
+  <div class="footer-bottom">2020-<?=date('Y')?> &copy; <?=$appName?> &mdash; All Rights Reserved</div>
 </footer>
 
-<!-- ============================================================
-     AUTH MODAL
-     ============================================================ -->
-<div class="auth-overlay" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-  <div class="auth-card">
-    <button class="auth-close" type="button" onclick="closeAuth()" aria-label="Tutup dialog">[ X ]</button>
-    <div class="auth-eyebrow" id="authEyebrow">[ AUTHENTICATION REQUIRED ]</div>
-    <h2 class="auth-title" id="authTitle">Masuk.</h2>
-    <p class="auth-sub" id="authSub">Akses panel menggunakan kredensial Anda.</p>
-
-    <?php if ($error): ?>
-      <div class="alert alert-error">[ ERR ]&nbsp;<?= htmlspecialchars($error) ?></div>
-    <?php endif; ?>
-    <?php if ($success): ?>
-      <div class="alert alert-success">[ OK ]&nbsp;<?= htmlspecialchars($success) ?></div>
-    <?php endif; ?>
-
-    <div class="tabs" role="tablist">
-      <button class="tab-btn active" data-tab="login" role="tab" type="button">[ Masuk ]</button>
-      <button class="tab-btn" data-tab="register" role="tab" type="button">[ Daftar ]</button>
-      <button class="tab-btn" data-tab="forgot" role="tab" type="button" hidden>[ Lupa Password ]</button>
-      <button class="tab-btn" data-tab="otp" role="tab" type="button" hidden>[ Verifikasi OTP ]</button>
-      <button class="tab-btn" data-tab="reset" role="tab" type="button" hidden>[ Reset Password ]</button>
-    </div>    <!-- LOGIN -->
-        <div class="tab-content active" id="tab-login" role="tabpanel">
-          <form method="POST" autocomplete="on">
-            <input type="hidden" name="action" value="login">
-            <?= csrfField() ?>
-        <div class="form-group">
-          <label>Username / Email</label>
-          <input type="text" name="username" placeholder="username atau email" required autocomplete="username">
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">[ AUTHENTICATE ]</button>
-        <button type="button" class="form-link" data-switch="forgot">Lupa password?</button>
-      </form>
-    </div>    <!-- REGISTER -->
-        <div class="tab-content" id="tab-register" role="tabpanel">
-          <form method="POST" id="regForm" autocomplete="on">
-            <input type="hidden" name="action" value="register">
-            <?= csrfField() ?>
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" name="reg_username" placeholder="username unik, 3-32 karakter" required autocomplete="username">
-        </div>
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" name="reg_email" id="regEmail" placeholder="email@domain.com" required autocomplete="email">
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" name="reg_password" placeholder="minimal 6 karakter" required autocomplete="new-password">
-        </div>
-        <div class="form-group">
-          <label>Konfirmasi</label>
-          <input type="password" name="reg_confirm" placeholder="ulangi password" required autocomplete="new-password">
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">[ CREATE ACCOUNT ]</button>
-        <button type="button" class="form-link" data-switch="login">Sudah punya akun? Masuk</button>
-      </form>
-    </div>    <!-- FORGOT -->
-        <div class="tab-content" id="tab-forgot" role="tabpanel">
-          <form method="POST" id="forgotForm">
-            <input type="hidden" name="action" value="forgot_password">
-            <?= csrfField() ?>
-        <div class="form-group">
-          <label>Email Terdaftar</label>
-          <input type="email" name="forgot_email" id="forgotEmail" placeholder="email@domain.com" required>
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">[ SEND RESET CODE ]</button>
-        <button type="button" class="form-link" data-switch="login">Kembali ke login</button>
-      </form>
-    </div>
-
-    <!-- OTP VERIFY -->
-    <div class="tab-content" id="tab-otp" role="tabpanel">
-      <p style="color:var(--muted);font-size:0.84rem;margin-bottom:18px;line-height:1.5;">
-        Masukkan 6-digit kode yang dikirim ke email Anda. Berlaku selama 15 menit.
-      </p>        <form method="POST">
-            <input type="hidden" name="action" value="verify_otp">
-            <?= csrfField() ?>
-            <input type="hidden" name="otp_email" id="otpEmail" value="">
-        <div class="form-group">
-          <label>Kode OTP</label>
-          <input type="text" name="otp_code" placeholder="000000" maxlength="6"
-                 inputmode="numeric" pattern="[0-9]{6}" required
-                 style="font-family:var(--font-display); text-align:center; font-size:1.4rem; letter-spacing:0.5em; font-weight:700;">
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">[ VERIFY ]</button>
-      </form>      <form method="POST" style="margin-top:14px;">
-        <input type="hidden" name="action" value="resend_otp">
-        <?= csrfField() ?>
-        <input type="hidden" name="resend_email" id="resendEmail" value="">
-        <button type="submit" class="btn btn-full">[ Resend OTP ]</button>
-      </form>
-    </div>
-
-    <!-- RESET PASSWORD (after forgot_password sends code) -->
-    <div class="tab-content" id="tab-reset" role="tabpanel">
-      <p style="color:var(--muted);font-size:0.84rem;margin-bottom:18px;line-height:1.5;">
-        Masukkan kode OTP dari email dan password baru Anda. OTP berlaku 15 menit.
-      </p>
-      <form method="POST" id="resetForm" autocomplete="off">
-        <input type="hidden" name="action" value="reset_password">
-        <?= csrfField() ?>
-        <input type="hidden" name="reset_email" id="resetEmail" value="">
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="resetEmailDisplay" value="" disabled style="opacity:0.6;cursor:not-allowed;">
-        </div>
-        <div class="form-group">
-          <label>Kode OTP</label>
-          <input type="text" name="reset_otp" placeholder="000000" maxlength="6"
-                 inputmode="numeric" pattern="[0-9]{6}" required
-                 style="font-family:var(--font-display); text-align:center; font-size:1.4rem; letter-spacing:0.5em; font-weight:700;">
-        </div>
-        <div class="form-group">
-          <label>Password Baru</label>
-          <input type="password" name="new_password" placeholder="minimal 6 karakter" required autocomplete="new-password">
-        </div>
-        <div class="form-group">
-          <label>Konfirmasi Password</label>
-          <input type="password" name="confirm_password" placeholder="ulangi password baru" required autocomplete="new-password">
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">[ RESET PASSWORD ]</button>
-        <button type="button" class="form-link" data-switch="login">Kembali ke login</button>
-      </form>
-    </div>
-  </div>
-</div>
-
 <script>
-// ============================================================
-// Auth modal control
-// ============================================================
-function openAuth(tab) {
-  var modal = document.getElementById('authModal');
-  modal.classList.add('open');
-  document.body.style.overflow = 'hidden';
-  switchAuth(tab);
+function toggleFaq(btn){
+  var a=btn.nextElementSibling;
+  var isOpen=a.classList.contains('show');
+  document.querySelectorAll('.faq-a').forEach(function(e){e.classList.remove('show')});
+  document.querySelectorAll('.faq-q').forEach(function(e){e.classList.remove('active')});
+  if(!isOpen){a.classList.add('show');btn.classList.add('active')}
 }
-function closeAuth() {
-  var modal = document.getElementById('authModal');
-  modal.classList.remove('open');
-  document.body.style.overflow = '';
-}
-function switchAuth(tab) {
-  ['login','register','forgot','otp','reset'].forEach(function(t) {
-    var el = document.getElementById('tab-' + t);
-    if (el) el.classList.toggle('active', t === tab);
-  });
-  var contextualTabs = ['forgot','otp','reset'];
-  document.querySelectorAll('.tab-btn').forEach(function(b) {
-    var bt = b.dataset.tab;
-    var isContextual = contextualTabs.indexOf(bt) !== -1;
-    if (isContextual) {
-      b.hidden = (bt !== tab);
-      b.classList.toggle('active', bt === tab);
-    } else {
-      b.hidden = false;
-      b.classList.toggle('active', bt === tab);
-    }
-  });
-  var titles = {
-    login:    ['[ AUTHENTICATION REQUIRED ]', 'Masuk.',          'Akses panel menggunakan kredensial Anda.'],
-    register: ['[ NEW IDENTITY ]',             'Daftar Akun.',    'Buat akun baru untuk mengakses layanan.'],
-    forgot:   ['[ PASSWORD RECOVERY ]',        'Reset Password.', 'Masukkan email terdaftar untuk menerima kode.'],
-    otp:      ['[ VERIFY ]',                   'Verifikasi OTP.', 'Masukkan 6 digit kode dari email Anda.'],
-    reset:    ['[ NEW CREDENTIALS ]',          'Reset Password.', 'Masukkan kode OTP dan password baru Anda.']
-  };
-  var t = titles[tab] || titles.login;
-  document.getElementById('authEyebrow').textContent = t[0];
-  document.getElementById('authTitle').textContent   = t[1];
-  document.getElementById('authSub').textContent     = t[2];
-}
-
-// Tab-button clicking switches tab too
-document.querySelectorAll('.tab-btn').forEach(function(b) {
-  b.addEventListener('click', function() { switchAuth(this.dataset.tab); });
+document.querySelectorAll('.nav-links a').forEach(function(a){
+  a.addEventListener('click',function(){document.getElementById('navbar').classList.remove('mobile-open')});
 });
-
-// Form-link [data-switch="login|forgot|register|otp"]
-document.querySelectorAll('.form-link').forEach(function(b) {
-  b.addEventListener('click', function() { switchAuth(this.dataset.switch); });
-});
-
-// Close on overlay click or ESC key
-document.getElementById('authModal').addEventListener('click', function(e) {
-  if (e.target === this) closeAuth();
-});
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeAuth();
-});
-
-// Carry email from register form to OTP form
-document.getElementById('regForm')?.addEventListener('submit', function() {
-  var e = document.getElementById('regEmail').value;
-  if (e) {
-    document.getElementById('otpEmail').value = e;
-    document.getElementById('resendEmail').value = e;
-  }
-});
-
-// Carry email from forgot-email field to OTP + reset forms on next step
-document.getElementById('forgotForm')?.addEventListener('submit', function() {
-  var e = document.getElementById('forgotEmail').value;
-  if (e) {
-    document.getElementById('otpEmail').value = e;
-    document.getElementById('resendEmail').value = e;
-    document.getElementById('resetEmail').value = e;
-    var display = document.getElementById('resetEmailDisplay');
-    if (display) display.value = e;
-  }
-});
-
-// After server-side actions, auto-open correct tab
-<?php if (strpos($success, 'OTP') !== false || strpos($success, 'Akun berhasil') !== false): ?>
-document.addEventListener('DOMContentLoaded', function() { openAuth('otp'); });
-<?php endif; ?>
-<?php if (strpos($success, 'diverifikasi') !== false || strpos($success, 'Password berhasil') !== false): ?>
-document.addEventListener('DOMContentLoaded', function() { openAuth('login'); });
-<?php endif; ?>
-<?php if (!empty($triggerReset)): ?>
-document.addEventListener('DOMContentLoaded', function() {
-  openAuth('reset');
-  var fe = document.getElementById('forgotEmail');
-  var re = document.getElementById('resetEmail');
-  var rd = document.getElementById('resetEmailDisplay');
-  if (fe && re && rd) {
-    var v = fe.value || <?= json_encode($_POST['forgot_email'] ?? '', JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-    re.value = v;
-    rd.value = v;
-  }
-});
-<?php endif; ?>
-
-// ============================================================
-// Stat counter animation on viewport entry
-// ============================================================
-(function() {
-  if (!('IntersectionObserver' in window)) {
-    document.querySelectorAll('.stat-num[data-target]').forEach(function(el) {
-      el.textContent = parseInt(el.dataset.target || '0', 10).toLocaleString();
-    });
-    return;
-  }
-  var counters = document.querySelectorAll('.stat-num[data-target]');
-  var animate = function(el) {
-    var target = parseInt(el.dataset.target, 10) || 0;
-    var duration = 1400;
-    var start = performance.now();
-    var step = function(now) {
-      var t = Math.min((now - start) / duration, 1);
-      var eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = Math.round(eased * target).toLocaleString('id-ID');
-      if (t < 1) requestAnimationFrame(step);
-      else el.textContent = target.toLocaleString('id-ID');
-    };
-    requestAnimationFrame(step);
-  };
-  var obs = new IntersectionObserver(function(entries) {
-    entries.forEach(function(e) {
-      if (e.isIntersecting) { animate(e.target); obs.unobserve(e.target); }
-    });
-  }, { threshold: 0.4 });
-  counters.forEach(function(c) { obs.observe(c); });
-})();
 </script>
 </body>
 </html>
