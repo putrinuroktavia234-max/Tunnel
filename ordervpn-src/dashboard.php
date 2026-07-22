@@ -1,1013 +1,851 @@
 <?php
-// ============================================================
-// OrderVPN — User Dashboard
-// Multi-page SPA via ?page=X. Midnight Console theme.
-// Backend actions: change_password, topup_request, renew_account,
-//                  delete_vpn_account, place_order, delete_account.
-// Sesuai: menu 1-8 (Account Mgmt) + 21 (OrderVPN) + 23 (Traffic).
-// Sesuai: ssh/vmess/vless/trojan/zivpn ordering via servers table
-//         + manual topup via Dana/GoPay/QRIS + saldo flow.
-// ============================================================
 require_once __DIR__.'/includes/config.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
-$ctx      = requireLogin();
-$db       = getDB();
-$uid      = (int)$ctx['user_id'];
-$appName  = getSetting('app_name', 'OrderVPN');
-$page     = $_GET['page'] ?? 'home';
-$valid    = ['home','akun','traffic','servers','orders','topup','settings'];
-if (!in_array($page, $valid, true)) $page = 'home';
+$session = requireLogin();
+$db = getDB();
 
-$me_q = $db->prepare("SELECT * FROM users WHERE id=? LIMIT 1");
-$me_q->execute([$uid]);
-$me = $me_q->fetch();
+$userId = $session['user_id'];
+$username = $session['username'];
+$role = $session['role'];
 
-$isAdmin = (($me['role'] ?? '') === 'admin');
-$saldo   = (int)($me['saldo'] ?? 0);
+// Ambil data user fresh
+$u = $db->prepare("SELECT * FROM users WHERE id=?");
+$u->execute([$userId]); $user = $u->fetch();
 
-// Handle POST actions for ALL pages
-$flash = ['ok' => '', 'err' => ''];
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
+// Statistik
+$totalAkun = $db->prepare("SELECT COUNT(*) FROM vpn_accounts WHERE user_id=? AND status='active'");
+$totalAkun->execute([$userId]); $totalAkun = $totalAkun->fetchColumn();
 
-    // ----- CHANGE PASSWORD -----
-    if ($action === 'change_password') {
-        $cur = $_POST['current_password'] ?? '';
-        $np  = $_POST['new_password'] ?? '';
-        $cp  = $_POST['confirm_password'] ?? '';
-        if (!password_verify($cur, $me['password'])) {
-            $flash['err'] = 'Password saat ini salah.';
-        } elseif (strlen($np) < 6) {
-            $flash['err'] = 'Password baru minimal 6 karakter.';
-        } elseif ($np !== $cp) {
-            $flash['err'] = 'Konfirmasi tidak cocok.';
-        } else {
-            $hash = password_hash($np, PASSWORD_BCRYPT);
-            $db->prepare("UPDATE users SET password=? WHERE id=?")->execute([$hash, $uid]);
-            $flash['ok'] = 'Password berhasil diubah.';
-        }
-    }
+$totalTrx = $db->prepare("SELECT COUNT(*) FROM transactions WHERE user_id=?");
+$totalTrx->execute([$userId]); $totalTrx = $totalTrx->fetchColumn();
 
-    // ----- DELETE ACCOUNT (user self-delete) -----
-    if ($action === 'delete_account') {
-        $confirm = sanitize($_POST['confirm_username'] ?? '');
-        if ($confirm !== $me['username']) {
-            $flash['err'] = 'Username konfirmasi tidak cocok.';
-        } else {
-            try {
-                $db->beginTransaction();
-                $db->prepare("DELETE FROM vpn_accounts    WHERE user_id=?")->execute([$uid]);
-                $db->prepare("DELETE FROM topup_requests  WHERE user_id=?")->execute([$uid]);
-                $db->prepare("DELETE FROM transactions    WHERE user_id=?")->execute([$uid]);
-                $db->prepare("DELETE FROM users           WHERE id=?")->execute([$uid]);
-                $db->commit();
-            } catch (Exception $ex) { $db->rollBack(); $flash['err'] = 'Gagal menghapus akun: '.$ex->getMessage(); }
-            if (!$flash['err']) { session_destroy(); header('Location: index.php?deleted=1'); exit; }
-        }
-    }
+$totalTopup = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE user_id=? AND type='topup' AND status='success'");
+$totalTopup->execute([$userId]); $totalTopup = $totalTopup->fetchColumn();
 
-    // ----- TOPUP REQUEST -----
-    if ($action === 'topup_request') {
-        $amount = (int)($_POST['amount'] ?? 0);
-        $method = sanitize($_POST['method'] ?? '');
-        $proof  = '';
-        if (!empty($_FILES['proof']) && (int)$_FILES['proof']['error'] === 0) {
-            $ext = strtolower(pathinfo($_FILES['proof']['name'] ?? '', PATHINFO_EXTENSION));
-            if (in_array($ext, ['jpg','jpeg','png','webp'], true)) {
-                if ($_FILES['proof']['size'] > 5 * 1024 * 1024) {
-                    $flash['err'] = 'Ukuran file bukti maksimal 5MB.';
-                } else {
-                    $fname  = 'topup_'.date('Ymd').'_'.$uid.'_'.bin2hex(random_bytes(4)).'.'.$ext;
-                    $dest   = __DIR__.'/uploads/bukti/'.$fname;
-                    if (!is_dir(dirname($dest))) { @mkdir(dirname($dest), 0755, true); }
-                    if (move_uploaded_file($_FILES['proof']['tmp_name'], $dest)) {
-                        @chmod($dest, 0644);
-                        $proof = 'uploads/bukti/'.$fname;
-                    } else { $flash['err'] = 'Gagal upload file bukti.'; }
-                }
-            } else { $flash['err'] = 'Bukti harus JPG / PNG / WebP.'; }
-        }
-        if (!$flash['err']) {
-            if ($amount < 5000)               $flash['err'] = 'Minimum topup Rp 5.000.';
-            elseif ($amount > 10000000)       $flash['err'] = 'Maksimum topup Rp 10.000.000.';
-            elseif (!in_array($method, ['dana','gopay','shopeepay','ovo','qris','bank_transfer'], true))
-                                            $flash['err'] = 'Metode pembayaran tidak valid.';
-            elseif ($proof === '')            $flash['err'] = 'Upload bukti transfer dulu.';
-        }
-        if (!$flash['err']) {
-            $db->prepare("INSERT INTO topup_requests (user_id, amount, method, proof_image, status, created_at) VALUES (?,?,?,?, 'pending', NOW())")
-               ->execute([$uid, $amount, $method, $proof]);
-            $flash['ok'] = 'Permintaan topup Rp '.number_format($amount).' dikirim. Tunggu konfirmasi admin.';
-            $page = 'topup';
-        }
-    }
+// Akun aktif terbaru
+$akuns = $db->prepare("SELECT va.*, s.nama_server, s.lokasi, s.flag FROM vpn_accounts va 
+    JOIN servers s ON va.server_id=s.id 
+    WHERE va.user_id=? AND va.status='active' ORDER BY va.created_at DESC LIMIT 5");
+$akuns->execute([$userId]); $akuns = $akuns->fetchAll();
 
-    // ----- DELETE VPN ACCOUNT -----
-    if ($action === 'delete_vpn_account') {
-        $acc_id = (int)($_POST['account_id'] ?? 0);
-        $db->prepare("DELETE FROM vpn_accounts WHERE id=? AND user_id=?")->execute([$acc_id, $uid]);
-        $flash['ok'] = 'Akun VPN dihapus.';
-        $page = 'akun';
-    }
+// Transaksi terbaru
+$trxs = $db->prepare("SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 5");
+$trxs->execute([$userId]); $trxs = $trxs->fetchAll();
 
-    // ----- RENEW VPN ACCOUNT -----
-    if ($action === 'renew_account') {
-        $acc_id = (int)($_POST['account_id'] ?? 0);
-        $days   = (int)($_POST['days'] ?? 30);
-        $aq     = $db->prepare("SELECT * FROM vpn_accounts WHERE id=? AND user_id=? LIMIT 1");
-        $aq->execute([$acc_id, $uid]);
-        $acc    = $aq->fetch();
-        if (!$acc)                                          $flash['err'] = 'Akun tidak ditemukan.';
-        elseif ($days < 1 || $days > 365)                  $flash['err'] = 'Durasi harus 1-365 hari.';
-        else {
-            $sq = $db->prepare("SELECT * FROM servers WHERE id=? LIMIT 1");
-            $sq->execute([$acc['server_id']]);
-            $srv = $sq->fetch();
-            $price = (int)round(($srv['monthly_price'] ?? 10000) * ($days / 30));
-            if ($saldo < $price) $flash['err'] = 'Saldo tidak cukup. Diperlukan Rp '.number_format($price);
-            else {
-                try {
-                    $db->beginTransaction();
-                    $newExpiry = date('Y-m-d H:i:s', strtotime(($acc['expiry_date'] ?? date('Y-m-d H:i:s'))." +{$days} days"));
-                    if (strtotime($newExpiry) < time()) $newExpiry = date('Y-m-d H:i:s', strtotime("+{$days} days"));
-                    $db->prepare("UPDATE vpn_accounts SET expiry_date=?, status='active' WHERE id=?")->execute([$newExpiry, $acc_id]);
-                    $db->prepare("UPDATE users SET saldo = saldo - ? WHERE id=?")->execute([$price, $uid]);
-                    $db->prepare("INSERT INTO transactions (user_id, server_id, account_id, type, amount, status, created_at) VALUES (?,?,?,?,?, 'success', NOW())")
-                       ->execute([$uid, $acc['server_id'], $acc_id, 'renew', $price]);
-                    $db->commit();
-                    $saldo -= $price;
-                    $flash['ok'] = "Akun #{$acc_id} diperpanjang {$days} hari. Saldo berkurang Rp ".number_format($price).'.';
-                } catch (Exception $ex) { $db->rollBack(); $flash['err'] = 'Transaksi gagal: '.$ex->getMessage(); }
-            }
-        }
-        $page = 'akun';
-    }
+// Servers untuk order
+$servers = $db->query("SELECT * FROM servers WHERE status='ready' ORDER BY nama_server")->fetchAll();
 
-    // ----- PLACE ORDER (create_account) -----
-    if ($action === 'place_order') {
-        $server_id = (int)($_POST['server_id'] ?? 0);
-        $protocol  = sanitize($_POST['protocol'] ?? '');
-        $days      = (int)($_POST['days'] ?? 30);
-        $promo     = sanitize($_POST['promo_code'] ?? '');
+$appName = getSetting('app_name','OrderVPN');
+$appLogo = getSetting('app_logo','[SIG]');
+$contactWa = getSetting('contact_wa');
+$contactTg = getSetting('contact_tg');
 
-        $sq = $db->prepare("SELECT * FROM servers WHERE id=? AND status='ready' LIMIT 1");
-        $sq->execute([$server_id]);
-        $srv = $sq->fetch();
+// Trial sudah dipakai hari ini?
+$trialUsed = $db->prepare("SELECT COUNT(*) FROM vpn_accounts WHERE user_id=? AND is_trial=1 AND DATE(created_at)=CURDATE()");
+$trialUsed->execute([$userId]); $trialUsed = (int)$trialUsed->fetchColumn();
 
-        if (!$srv)                                                            $flash['err'] = 'Server tidak tersedia.';
-        elseif (!in_array($protocol, ['ssh','vmess','vless','trojan','zivpn-udp','udp-custom'], true))
-                                                                              $flash['err'] = 'Protokol tidak valid.';
-        elseif ($days < 1 || $days > 365)                                     $flash['err'] = 'Durasi 1-365 hari.';
-        else {
-            $price = (int)round(($srv['monthly_price'] ?? 10000) * ($days / 30));
-            // Apply promo if any
-            $discount = 0;
-            if ($promo !== '') {
-                $pq = $db->prepare("SELECT * FROM promo_codes WHERE code=? AND (max_uses IS NULL OR used_count < max_uses) AND (expires IS NULL OR expires > NOW()) LIMIT 1");
-                $pq->execute([$promo]);
-                $promoRow = $pq->fetch();
-                if ($promoRow) { $discount = (int)($price * ((float)($promoRow['discount'] ?? 0) / 100)); }
-            }
-            $finalPrice = $price - $discount;
-            if ($saldo < $finalPrice) $flash['err'] = 'Saldo tidak cukup. Diperlukan Rp '.number_format($finalPrice);
-            else {
-                try {
-                    $db->beginTransaction();
-                    $username = strtolower($me['username']).'-'.substr(bin2hex(random_bytes(2)), 0, 4);
-                    $password = bin2hex(random_bytes(6));
-                    $ip_limit = 2;
-                    $expiry   = date('Y-m-d H:i:s', strtotime("+{$days} days"));
-                    $db->prepare("INSERT INTO vpn_accounts (user_id, server_id, username, password, protocol, ip_limit, expiry_date, status, created_at) VALUES (?,?,?,?,?,?,?, 'active', NOW())")
-                       ->execute([$uid, $server_id, $username, $password, $protocol, $ip_limit, $expiry]);
-                    $acc_id = (int)$db->lastInsertId();
-                    $db->prepare("UPDATE users SET saldo = saldo - ? WHERE id=?")->execute([$finalPrice, $uid]);
-                    $db->prepare("INSERT INTO transactions (user_id, server_id, account_id, type, amount, status, created_at) VALUES (?,?,?,?,?, 'success', NOW())")
-                       ->execute([$uid, $server_id, $acc_id, 'order', $finalPrice]);
-                    if ($promoRow ?? false) {
-                        $db->prepare("UPDATE promo_codes SET used_count = used_count + 1 WHERE id=?")->execute([$promoRow['id']]);
-                    }
-                    $db->commit();
-                    $saldo -= $finalPrice;
-                    $flash['ok'] = "Order berhasil. Akun #{$acc_id} ({$protocol}) di {$srv['name']} aktif sampai ".date('d M Y', strtotime($expiry)).'. Username: '.htmlspecialchars($username);
-                } catch (Exception $ex) { $db->rollBack(); $flash['err'] = 'Order gagal: '.$ex->getMessage(); }
-            }
-        }
-        $page = 'orders';
-    }
-}
-
-// ====== DATA FETCHES PER PAGE ======
-$counts = [
-    'akun_active'   => 0,
-    'akun_total'    => 0,
-    'orders'        => 0,
-    'topup_pending' => 0,
-];
-if ($db) {
-    try {
-        $counts['akun_active']   = (int)$db->query("SELECT COUNT(*) FROM vpn_accounts WHERE user_id={$uid} AND status='active' AND expiry_date > NOW()")->fetchColumn();
-        $counts['akun_total']    = (int)$db->query("SELECT COUNT(*) FROM vpn_accounts WHERE user_id={$uid}")->fetchColumn();
-        $counts['orders']        = (int)$db->query("SELECT COUNT(*) FROM transactions WHERE user_id={$uid}")->fetchColumn();
-        $counts['topup_pending'] = (int)$db->query("SELECT COUNT(*) FROM topup_requests WHERE user_id={$uid} AND status='pending'")->fetchColumn();
-    } catch (Exception $ex) { /* tables may not exist yet — silently skip */ }
-}
-
-$pages = [
-    'home'     => '[ 01 // Overview ]',
-    'akun'     => '[ 02 // Account Mgmt ]',
-    'traffic'  => '[ 03 // Traffic Monitor ]',
-    'servers'  => '[ 04 // Browse Servers ]',
-    'orders'   => '[ 05 // Order History ]',
-    'topup'    => '[ 06 // Topup Saldo ]',
-    'settings' => '[ 07 // Settings ]',
-];
-$titles = [
-    'home'     => 'Dashboard Overview',
-    'akun'     => 'Akun VPN Saya',
-    'traffic'  => 'Traffic Monitor',
-    'servers'  => 'Browse Server',
-    'orders'   => 'Riwayat Order',
-    'topup'    => 'Topup Saldo',
-    'settings' => 'Pengaturan Akun',
-];
-$pageTitle = $titles[$page];
-$pageEyebrow = $pages[$page];
+$showGithub = true;
+$wcDomains = $db->query("SELECT * FROM wildcard_domains ORDER BY domain ASC")->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($pageTitle) ?> · <?= htmlspecialchars($appName) ?></title>
-<link rel="stylesheet" href="assets/ordervpn.css?v=3.12.1">
-<style>
-/* ============================================================
-   DASHBOARD-SPECIFIC (extends shared tokens from ordervpn.css)
-   ============================================================ */
-.dash-layout { display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 60px); }
-.dash-side   { background:var(--bg-elev); border-right:1px solid var(--border); padding:20px 0; position:sticky; top:60px; height:calc(100vh - 60px); overflow-y:auto; }
-.dash-side-user { padding:0 22px 18px; margin-bottom:6px; }
-.dash-side-user .who   { font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--text); letter-spacing:-0.01em; }
-.dash-side-user .email { font-family:var(--font-display); font-size:10px; color:var(--muted); margin-top:4px; word-break:break-all; }
-.dash-side-user .saldo { display:flex; flex-direction:column; gap:4px; margin-top:14px; padding:10px 12px; background:var(--bg); border:1px solid var(--border); }
-.dash-side-user .saldo-label { font-family:var(--font-display); font-size:9px; color:var(--muted); letter-spacing:0.28em; text-transform:uppercase; }
-.dash-side-user .saldo-amt   { font-family:var(--font-display); font-size:17px; font-weight:700; color:var(--yellow); letter-spacing:-0.01em; }
-.dash-side-nav { display:flex; flex-direction:column; gap:1px; padding:0 10px; margin-top:8px; }
-.dash-nav-btn { display:flex; align-items:center; gap:10px; padding:9px 12px; border:none; border-left:2px solid transparent; background:transparent; color:var(--text-dim); font-family:var(--font-display); font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; cursor:pointer; text-align:left; text-decoration:none; transition:background var(--transition), color var(--transition), border-color var(--transition); }
-.dash-nav-btn:hover { background:rgba(0,255,170,0.05); color:var(--text); }
-.dash-nav-btn.active { background:rgba(0,255,170,0.1); color:var(--cyan); border-left-color:var(--cyan); padding-left:10px; }
-.dash-nav-btn .icn { font-family:var(--font-display); font-size:13px; min-width:14px; color:var(--cyan); }
-.dash-nav-btn .badge-count { margin-left:auto; background:rgba(255,198,0,0.15); color:var(--yellow); font-size:9px; padding:2px 6px; }
-.dash-main { padding:32px 40px; max-width:1240px; }
-.dash-eyebrow { font-family:var(--font-display); font-size:11px; color:var(--cyan); letter-spacing:0.3em; text-transform:uppercase; margin-bottom:10px; }
-.dash-h1 { font-family:var(--font-display); font-size:1.7rem; font-weight:700; letter-spacing:-0.025em; line-height:1.15; margin-bottom:6px; }
-.dash-sub { color:var(--muted); margin-bottom:28px; font-size:0.92rem; }
-.flash { padding:14px 16px; border-left:3px solid; font-family:var(--font-display); font-size:12px; margin-bottom:24px; letter-spacing:0.05em; animation:fadeSlide 0.25s ease-out; }
-.flash-ok  { border-color:var(--success); background:rgba(63,185,80,0.08); color:#7be899; }
-.flash-err { border-color:var(--danger);  background:rgba(248,81,73,0.08); color:#ff8a82; }
-@keyframes fadeSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-
-/* Stat grid */
-.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); margin-bottom:32px; }
-.stat-box { background:var(--bg); padding:20px 22px; }
-.stat-box .label { font-family:var(--font-display); font-size:10px; color:var(--muted); letter-spacing:0.28em; text-transform:uppercase; }
-.stat-box .val   { font-family:var(--font-display); font-size:1.7rem; font-weight:700; letter-spacing:-0.02em; margin-top:6px; }
-.stat-box .val.cyan   { color:var(--cyan); }
-.stat-box .val.yellow { color:var(--yellow); }
-.stat-box .subtitle   { font-size:0.78rem; color:var(--muted); margin-top:4px; }
-
-/* Quick action cards */
-.qa-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-bottom:32px; }
-.qa-card { display:block; padding:22px 20px; border:1px solid var(--border); background:var(--bg-elev); transition:border-color var(--transition), background var(--transition); text-decoration:none; }
-.qa-card:hover { border-color:var(--cyan); background:rgba(0,255,170,0.04); }
-.qa-card h3 { font-family:var(--font-display); font-size:13px; margin-bottom:6px; color:var(--text); letter-spacing:-0.01em; }
-.qa-card p  { font-size:0.84rem; color:var(--muted); line-height:1.5; }
-.qa-card .arr { color:var(--cyan); font-family:var(--font-display); font-size:11px; margin-top:12px; display:block; letter-spacing:0.15em; }
-
-/* Section card */
-.section-card { background:var(--bg-elev); border:1px solid var(--border); margin-bottom:22px; }
-.section-card .head { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-.section-card .head h3 { font-family:var(--font-display); font-size:11px; color:var(--cyan); letter-spacing:0.25em; text-transform:uppercase; }
-.section-card .body { padding:18px; }
-
-/* Tables */
-.table-wrap { background:var(--bg-elev); border:1px solid var(--border); overflow-x:auto; margin-bottom:22px; }
-table.data { width:100%; border-collapse:collapse; font-size:0.88rem; }
-table.data th { text-align:left; padding:11px 14px; font-family:var(--font-display); font-size:10px; color:var(--muted); letter-spacing:0.22em; text-transform:uppercase; border-bottom:1px solid var(--border); white-space:nowrap; }
-table.data td { padding:13px 14px; border-bottom:1px solid var(--border-dim); color:var(--text-dim); vertical-align:middle; }
-table.data tr:last-child td { border-bottom:none; }
-table.data tr:hover td { background:rgba(0,255,170,0.03); }
-table.data td.mono { font-family:var(--font-display); font-size:11px; color:var(--text); letter-spacing:0; }
-table.data td .row-actions { display:flex; gap:6px; }
-
-/* Pills */
-.pill { display:inline-block; padding:3px 9px; font-family:var(--font-display); font-size:9px; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; }
-.pill-active   { background:rgba(63,185,80,0.15) ; color:var(--success); }
-.pill-expired  { background:rgba(248,81,73,0.12) ; color:var(--danger);  }
-.pill-pending  { background:rgba(255,198,0,0.15) ; color:var(--yellow);  }
-.pill-online   { background:rgba(16,185,129,0.12); color:var(--success); }
-.pill-offline  { background:rgba(100,116,139,0.12); color:var(--muted);   }
-.pill-protocol { background:rgba(99,102,241,0.15) ; color:var(--accent); }
-
-/* Connection details card */
-.conn-card { background:var(--bg); border:1px solid var(--border); padding:14px; font-family:var(--font-display); font-size:11px; color:var(--text-dim); white-space:pre-wrap; word-break:break-all; line-height:1.65; max-height:280px; overflow:auto; }
-.conn-card .kv { display:flex; gap:8px; padding:2px 0; border-bottom:1px dashed var(--border-dim); }
-.conn-card .kv:last-child { border-bottom:none; }
-.conn-card .kv .k { color:var(--cyan); min-width:90px; flex-shrink:0; }
-
-/* Forms */
-.form-group { margin-bottom:14px; }
-.form-group label { display:block; font-family:var(--font-display); font-size:10px; color:var(--muted); letter-spacing:0.2em; text-transform:uppercase; margin-bottom:6px; }
-.form-group input[type=text], .form-group input[type=email], .form-group input[type=password], .form-group input[type=number], .form-group input[type=file], .form-group select, .form-group textarea {
-  width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); font-family:var(--font-body); font-size:0.92rem;
-}
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,255,170,0.12); }
-.form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-@media(max-width:600px){ .form-row { grid-template-columns:1fr; } }
-
-/* Topup amount buttons */
-.amt-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
-.amt-btn { padding:14px 4px; background:var(--bg); border:1px solid var(--border); font-family:var(--font-display); font-size:10px; font-weight:700; color:var(--text-dim); cursor:pointer; transition:all var(--transition); letter-spacing:0.15em; }
-.amt-btn:hover, .amt-btn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(0,255,170,0.05); }
-.amt-btn .num { display:block; font-size:14px; color:var(--yellow); margin-bottom:4px; letter-spacing:-0.01em; }
-
-/* Payment method tiles */
-.pmt-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:14px; }
-.pmt-tile { padding:14px 12px; border:1px solid var(--border); cursor:pointer; transition:all var(--transition); background:var(--bg); }
-.pmt-tile:hover, .pmt-tile.active { border-color:var(--cyan); background:rgba(0,255,170,0.05); }
-.pmt-tile .name { font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text); letter-spacing:0.05em; }
-.pmt-tile .num  { font-family:var(--font-display); font-size:10px; color:var(--muted); margin-top:4px; }
-.pmt-tile .num.qris { color:var(--yellow); font-style:italic; }
-
-/* Buttons (reuse shared .btn classes) */
-.btn-danger { background:transparent; color:var(--danger); border-color:var(--danger); }
-.btn-danger:hover { background:var(--danger); color:var(--bg); }
-.btn-sm  { padding:6px 12px; font-size:10px; }
-.btn-xs  { padding:4px 8px;  font-size:9px; }
-
-/* Account list (akun) — card per record */
-.acc-card { display:grid; grid-template-columns:auto 1fr auto; gap:18px; align-items:center; padding:14px; border:1px solid var(--border); background:var(--bg); margin-bottom:8px; }
-.acc-card:hover { border-color:var(--cyan); }
-.acc-card .acc-protocol { font-family:var(--font-display); font-size:10px; font-weight:700; padding:7px 9px; background:rgba(0,255,170,0.1); color:var(--cyan); letter-spacing:0.15em; }
-.acc-card .acc-info .acc-name { font-family:var(--font-display); font-size:13px; font-weight:700; color:var(--text); margin-bottom:3px; }
-.acc-card .acc-info .acc-meta { font-family:var(--font-display); font-size:10px; color:var(--muted); }
-.acc-card .acc-actions { display:flex; gap:6px; }
-
-/* Severity/danger zone */
-.danger-zone { border:1px solid rgba(248,81,73,0.4); background:rgba(248,81,73,0.03); padding:18px; margin-top:24px; }
-.danger-zone h4 { font-family:var(--font-display); font-size:11px; color:var(--danger); letter-spacing:0.25em; text-transform:uppercase; margin-bottom:8px; }
-.danger-zone p  { font-size:0.85rem; color:var(--muted); margin-bottom:12px; line-height:1.5; }
-
-/* Responsive */
-@media(max-width: 980px) {
-  .dash-layout { grid-template-columns:1fr; }
-  .dash-side { position:static; height:auto; padding:14px 0; }
-  .dash-main { padding:20px 18px; }
-}
-@media(max-width: 600px) {
-  .stat-grid { grid-template-columns:1fr 1fr; }
-  .amt-grid { grid-template-columns:repeat(2,1fr); }
-  .acc-card { grid-template-columns:1fr; }
-  .acc-card .acc-actions { justify-content:flex-start; }
-}
-</style>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?=$appName?> — Dashboard</title>
+<link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
 
-<!-- ============================================================
-     TOP NAV (shared style with landing)
-     ============================================================ -->
-<nav class="nav">
-  <div class="nav-brand">
-    <span class="prompt">&gt;_</span><span class="name"><?= htmlspecialchars($appName) ?></span>
-    <span class="ver">v3.12.1 · DASHBOARD</span>
+<!-- Sidebar -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('show')"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon" style="width:36px;height:36px;border-radius:8px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2"/></svg>
+    </div>
+    <div><h1><?=$appName?></h1><p>Premium VPN Service</p></div>
   </div>
-  <div class="nav-actions">
-    <span style="font-family:var(--font-display); font-size:10px; color:var(--muted); letter-spacing:0.2em; margin-right:10px; display:none;" class="role-badge">[ <?= htmlspecialchars(strtoupper($me['role'] ?? 'user')) ?> ]</span>
-    <?php if ($isAdmin): ?>
-      <a href="admin/" class="btn btn-sm" style="color:var(--yellow); border-color:var(--yellow);">[ Admin ]</a>
-    <?php endif; ?>
-    <a href="index.php?logout=1" class="btn btn-sm">[ Logout ]</a>
+  <nav>
+    <div class="nav-section">Menu</div>
+    <button class="nav-item active" onclick="showPage('home')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span> Dashboard</button>
+    <button class="nav-item" onclick="showPage('order')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span> Order VPN</button>
+    <button class="nav-item" onclick="showPage('akun')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Akun VPN <span class="nav-badge"><?=$totalAkun?></span></button>
+    <button class="nav-item" onclick="showPage('topup')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></span> Isi Saldo</button>
+    <div class="nav-section">Info</div>
+    <button class="nav-item" onclick="showPage('server')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Status Server</button>
+    <button class="nav-item" onclick="showPage('wildcard')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Wildcard</button>
+    <button class="nav-item" onclick="showPage('riwayat')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Riwayat</button>
+    <button class="nav-item" onclick="showPage('setting')"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Setting Akun</button>
+    <?php if($role==='admin'):?>
+    <div class="nav-section">Admin</div>
+    <a class="nav-item" href="/admin/"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span> Admin Panel</a>
+    <?php endif;?>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-card">
+      <div class="user-avatar" style="overflow:hidden;background:linear-gradient(135deg,#6366f1,#8b5cf6)"><?php if(!empty($user['avatar'])):?><img src="<?=esc($user['avatar'])?>" style="width:100%;height:100%;object-fit:cover;border-radius:8px"><?php else:?><?=strtoupper(substr($username,0,1))?><?php endif;?></div>
+      <div><div class="user-name"><?=esc($username)?></div>
+        <div class="user-role"><?=$role==='admin'?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><path d="M2 20l3-15 7 5 7-5 3 15H2z"/></svg> Admin':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> User'?></div></div>
+    </div>
+    <a href="/api/logout.php" class="nav-item" style="margin-top:.75rem;color:var(--red)"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span> Logout</a>
   </div>
-</nav>
+</aside>
 
-<div class="dash-layout">
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <button class="hamburger" onclick="toggleSidebar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+      <span class="topbar-title" id="pageTitle">Dashboard</span>
+    </div>
+    <div class="saldo-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:4px"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg> <?=formatRupiah($user['saldo'])?></div>
+  </div>
 
-  <!-- ============================================================
-       SIDEBAR
-       ============================================================ -->
-  <aside class="dash-side">
-    <div class="dash-side-user">
-      <div class="who"><?= htmlspecialchars($me['username']) ?></div>
-      <div class="email"><?= htmlspecialchars($me['email']) ?></div>
-      <div class="saldo">
-        <span class="saldo-label">[ Saldo ]</span>
-        <span class="saldo-amt">Rp <?= number_format($saldo, 0, ',', '.') ?></span>
+  <div class="content">
+
+    <!-- ANNOUNCEMENT TOAST -->
+    <?php
+    $_announcements = [];
+    for ($_i=1; $_i<=3; $_i++) {
+        $_val = getSetting('announce_'.$_i, '');
+        if ($_val) {
+            $_parts = explode('|', $_val, 2);
+            $_announcements[] = ['badge' => $_parts[0] ?? 'INFO', 'text' => $_parts[1] ?? $_parts[0]];
+        }
+    }
+    if ($_announcements):?>
+    <div id="announceToast" style="position:relative;margin-bottom:.75rem;overflow:hidden;border-radius:12px;border:1px solid rgba(99,102,241,0.15);background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.08));transition:opacity .4s ease,transform .4s ease">
+      <div style="display:flex;flex-direction:column;gap:.35rem;padding:.75rem 1rem">
+        <?php foreach($_announcements as $_a):?>
+        <div style="display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:var(--text)">
+          <span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:700;text-transform:uppercase;background:<?php if($_a['badge']==='PROMO'):?>linear-gradient(135deg,#f59e0b,#ef4444)<?php elseif($_a['badge']==='BARU'):?>linear-gradient(135deg,#22c55e,#16a34a)<?php else:?>linear-gradient(135deg,#6366f1,#8b5cf6)<?php endif;?>;color:#fff;flex-shrink:0"><?=esc($_a['badge'])?></span>
+          <span><?=esc($_a['text'])?></span>
+        </div>
+        <?php endforeach;?>
+      </div>
+      <button onclick="document.getElementById('announceToast').style.display='none'" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;line-height:1;padding:2px">&times;</button>
+    </div>
+    <script>
+    setTimeout(function(){
+      var el=document.getElementById('announceToast');
+      if(el){el.style.opacity='0';el.style.transform='translateY(-10px)';setTimeout(function(){if(el)el.style.display='none'},400);}
+    },<?=(int)(getSetting('announce_duration','7')*1000)?>);
+    </script>
+    <?php endif;?>
+
+    <!-- ALERT -->
+    <div id="pageAlert"></div>
+
+    <!-- PAGE: HOME -->
+    <div id="page-home">
+      <div class="stats">
+        <div class="stat-card blue"><div class="stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg></div><div class="stat-val"><?=$totalAkun?></div><div class="stat-label">Akun Aktif</div></div>
+        <div class="stat-card green"><div class="stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg></div><div class="stat-val"><?=formatRupiah($user['saldo'])?></div><div class="stat-label">Saldo</div></div>
+        <div class="stat-card purple"><div class="stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div class="stat-val"><?=$totalTrx?></div><div class="stat-label">Total Transaksi</div></div>
+        <div class="stat-card yellow"><div class="stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div><div class="stat-val"><?=formatRupiah($totalTopup)?></div><div class="stat-label">Total Topup</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Informasi Akun</div></div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:1rem">
+            <div style="width:56px;height:56px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#fff;flex-shrink:0">
+              <?php if(!empty($user['avatar'])):?><img src="<?=esc($user['avatar'])?>" style="width:100%;height:100%;object-fit:cover"><?php else:?><?=strtoupper(substr($username,0,1))?><?php endif;?>
+            </div>
+            <div><div style="font-weight:700;font-size:1rem"><?=esc($user['username'])?></div>
+              <div style="font-size:.82rem;color:var(--muted)"><?=esc($user['email'])?><?php if($user['whatsapp']):?> · <?=esc($user['whatsapp'])?><?php endif;?></div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">Bergabung <?=date('d M Y',strtotime($user['created_at']))?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <?php if($contactWa||$contactTg||$contactIg): $_adminName = getSetting('app_name','Admin');?>
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Admin</div></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:.65rem">
+            <div style="font-weight:700;font-size:.9rem;color:var(--accent)"><?=esc($_adminName)?></div>
+            <?php if($contactTg):?><div style="display:flex;align-items:center;gap:.7rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="#24A1DE"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 11.96c-1.29-.4-1.29-1.29.28-1.91l15.77-6.08c1.08-.43 2.01.24 1.66 2.17l-2.66 12.6c-.22 1.04-.86 1.29-1.75.8l-4.82-3.56-2.33 2.26c-.26.26-.47.47-.91.47z"/></svg><span style="font-size:.85rem"><?=esc(ltrim($contactTg,'@'))?></span></div><?php endif;?>
+            <?php if($contactWa):?><div style="display:flex;align-items:center;gap:.7rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg><span style="font-size:.85rem"><?=esc($contactWa)?></span></div><?php endif;?>
+            <?php if($contactIg):?><div style="display:flex;align-items:center;gap:.7rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="#E4405F"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg><span style="font-size:.85rem"><?=esc(ltrim($contactIg,'@'))?></span></div><?php endif;?>
+          </div>
+        </div>
+      </div>
+      <?php endif;?>
+      <div class="card" style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.08));border:1px solid rgba(99,102,241,.15)">
+        <div class="card-body">
+          <div style="display:flex;align-items:flex-start;gap:.85rem">
+            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:.9rem;color:var(--text);margin-bottom:.35rem">Script Tunneling Gratis!</div>
+              <p style="font-size:.82rem;color:var(--muted);line-height:1.6;margin:0">
+                Ingin menggunakan script ini? Bisa <strong>install gratis</strong>, tidak perlu izin IP dan tanpa password. 
+                Jangan lupa kasi bintang di GitHub ya! Terima kasih sudah menggunakan script tunneling dari kami.
+              </p>
+              <a href="https://github.com/putrinuroktavia234-max/Tunnel.git" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;margin-top:.75rem;padding:.5rem 1.1rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                Kasi Bintang di GitHub
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <nav class="dash-side-nav">
-      <a class="dash-nav-btn <?= $page==='home'?'active':'' ?>" href="?page=home"><span class="icn">::</span> Home</a>
-      <a class="dash-nav-btn <?= $page==='akun'?'active':'' ?>" href="?page=akun"><span class="icn">[]</span> Akun VPN<?php if($counts['akun_active']>0): ?> <span class="badge-count"><?= $counts['akun_active'] ?></span><?php endif; ?></a>
-      <a class="dash-nav-btn <?= $page==='traffic'?'active':'' ?>" href="?page=traffic"><span class="icn">~~</span> Traffic</a>
-      <a class="dash-nav-btn <?= $page==='servers'?'active':'' ?>" href="?page=servers"><span class="icn">&gt;&gt;</span> Servers</a>
-      <a class="dash-nav-btn <?= $page==='orders'?'active':'' ?>" href="?page=orders"><span class="icn">##</span> Orders<?php if($counts['orders']>0): ?> <span class="badge-count"><?= $counts['orders'] ?></span><?php endif; ?></a>
-      <a class="dash-nav-btn <?= $page==='topup'?'active':'' ?>" href="?page=topup"><span class="icn">++</span> Topup<?php if($counts['topup_pending']>0): ?> <span class="badge-count" style="background:rgba(255,198,0,0.25);"><?= $counts['topup_pending'] ?></span><?php endif; ?></a>
-      <a class="dash-nav-btn <?= $page==='settings'?'active':'' ?>" href="?page=settings"><span class="icn">~~</span> Settings</a>
-    </nav>
-    <div style="padding:20px 22px; margin-top:24px; border-top:1px dashed var(--border-dim);">
-      <div style="font-family:var(--font-display); font-size:9px; color:var(--muted); letter-spacing:0.22em; text-transform:uppercase; margin-bottom:6px;">[ Build ]</div>
-      <div style="font-family:var(--font-display); font-size:10px; color:var(--cyan);">v3.12.1 &middot; Youzin Crabz</div>
+
+    <!-- PAGE: WILDCARD -->
+    <div id="page-wildcard" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Domain Wildcard</div></div>
+        <div class="card-body">
+          <?php if($wcDomains):?>
+          <p style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem">Domain wildcard yang tersedia untuk konfigurasi akun VPN kamu:</p>
+          <?php foreach($wcDomains as $w):?>
+          <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .85rem;background:var(--card2);border-radius:8px;margin-bottom:.4rem">
+            <span style="width:36px;height:36px;border-radius:8px;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+            <div><div style="font-family:monospace;font-size:.85rem;font-weight:600"><?=esc($w['domain'])?></div><?php if($w['keterangan']):?><div style="font-size:.75rem;color:var(--muted)"><?=esc($w['keterangan'])?></div><?php endif;?></div>
+          </div>
+          <?php endforeach;?>
+          <?php else:?>
+          <div class="empty-state"><div class="icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div><p>Belum ada domain wildcard</p></div>
+          <?php endif;?>
+        </div>
+      </div>
     </div>
-  </aside>
 
-  <!-- ============================================================
-       MAIN
-       ============================================================ -->
-  <main class="dash-main">
-    <div class="dash-eyebrow"><?= $pageEyebrow ?></div>
-    <h1 class="dash-h1"><?= htmlspecialchars($pageTitle) ?>.</h1>
-
-    <?php if ($flash['ok']): ?>
-      <div class="flash flash-ok">[ OK ]&nbsp;&nbsp;<?= htmlspecialchars($flash['ok']) ?></div>
-    <?php endif; ?>
-    <?php if ($flash['err']): ?>
-      <div class="flash flash-err">[ ERR ]&nbsp;<?= htmlspecialchars($flash['err']) ?></div>
-    <?php endif; ?>
-
-    <?php
-    // ============================================================
-    // [01] HOME — Overview stats + quick actions
-    // ============================================================
-    if ($page === 'home'):
-      $recentOrders = [];
-      if ($db) {
-        try { $recentOrders = $db->query("SELECT t.*, s.name AS server_name FROM transactions t LEFT JOIN servers s ON s.id=t.server_id WHERE t.user_id={$uid} ORDER BY t.created_at DESC LIMIT 5")->fetchAll(); }
-        catch (Exception $ex) {}
-      }
-      $expiringSoon = 0;
-      if ($db) {
-        try { $expiringSoon = (int)$db->query("SELECT COUNT(*) FROM vpn_accounts WHERE user_id={$uid} AND status='active' AND expiry_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)")->fetchColumn(); } catch (Exception $ex) {}
-      }
-    ?>
-      <p class="dash-sub">Selamat datang kembali, <strong><?= htmlspecialchars($me['username']) ?></strong>. Panel kontrol akun tunnel kamu.</p>
-
-      <div class="stat-grid">
-        <div class="stat-box">
-          <div class="label">[ Saldo ]</div>
-          <div class="val yellow">Rp <?= number_format($saldo, 0, ',', '.') ?></div>
-          <div class="subtitle">Saldo wallet aktif</div>
-        </div>
-        <div class="stat-box">
-          <div class="label">[ Akun Aktif ]</div>
-          <div class="val cyan"><?= $counts['akun_active'] ?> <span style="font-size:11px; color:var(--muted); font-weight:400;">/ <?= $counts['akun_total'] ?></span></div>
-          <div class="subtitle"><?= $expiringSoon ?> akan expire dalam 7 hari</div>
-        </div>
-        <div class="stat-box">
-          <div class="label">[ Orders ]</div>
-          <div class="val"><?= $counts['orders'] ?></div>
-          <div class="subtitle">Transaksi sukses</div>
-        </div>
-        <div class="stat-box">
-          <div class="label">[ Topup Pending ]</div>
-          <div class="val"><?= $counts['topup_pending'] ?></div>
-          <div class="subtitle">Menunggu approval admin</div>
-        </div>
-      </div>
-
-      <h2 style="font-family:var(--font-display); font-size:11px; color:var(--cyan); letter-spacing:0.25em; text-transform:uppercase; margin-bottom:14px;">[ Quick Actions ]</h2>
-      <div class="qa-grid">
-        <a class="qa-card" href="?page=servers">
-          <h3>Browse Servers</h3>
-          <p>Lihat semua server yang tersedia dan pilih region untuk order.</p>
-          <span class="arr">[ DEPLOY ] &rarr;</span>
-        </a>
-        <a class="qa-card" href="?page=topup">
-          <h3>Topup Saldo</h3>
-          <p>Tambah saldo wallet via Dana, GoPay, QRIS, atau bank transfer.</p>
-          <span class="arr">[ TOPUP ] &rarr;</span>
-        </a>
-        <a class="qa-card" href="?page=akun">
-          <h3>Akun VPN Saya</h3>
-          <p>Lihat, renew, atau hapus akun tunnel aktif.</p>
-          <span class="arr">[ MANAGE ] &rarr;</span>
-        </a>
-        <a class="qa-card" href="?page=traffic">
-          <h3>Traffic Monitor</h3>
-          <p>Monitor penggunaan bandwidth per akun dan per server.</p>
-          <span class="arr">[ MONITOR ] &rarr;</span>
-        </a>
-      </div>
-
-      <?php if (!empty($recentOrders)): ?>
-      <div class="section-card">
-        <div class="head"><h3>[ Recent Transactions ]</h3><a href="?page=orders" style="font-family:var(--font-display); font-size:10px; color:var(--cyan); text-decoration:none; letter-spacing:0.15em;">[ ALL &rarr; ]</a></div>
-        <div class="body" style="padding:0;">
-          <table class="data">
-            <thead><tr>
-              <th>ID</th><th>Type</th><th>Server</th><th>Amount</th><th>Status</th><th>Date</th>
-            </tr></thead>
-            <tbody>
-            <?php foreach ($recentOrders as $o): ?>
-              <tr>
-                <td class="mono">#<?= (int)$o['id'] ?></td>
-                <td><span class="pill <?= $o['type']==='order'?'pill-active':($o['type']==='topup'?'pill-online':'') ?>"><?= htmlspecialchars($o['type']) ?></span></td>
-                <td><?= htmlspecialchars($o['server_name'] ?? '-') ?></td>
-                <td class="mono">Rp <?= number_format((int)$o['amount'], 0, ',', '.') ?></td>
-                <td><span class="pill <?= $o['status']==='success'?'pill-active':($o['status']==='pending'?'pill-pending':'pill-expired') ?>"><?= htmlspecialchars($o['status']) ?></span></td>
-                <td class="mono" style="font-size:10px;"><?= htmlspecialchars($o['created_at'] ?? '-') ?></td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
+    <!-- PAGE: ORDER -->
+    <div id="page-order" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Order VPN</div></div>
+        <div class="card-body">
+          <?php if(empty($servers)):?><div class="alert alert-error">Tidak ada server tersedia saat ini.</div>
+          <?php else:?>
+          <div class="form-group"><label class="lbl">Pilih Server</label>
+            <select id="orderServer">
+              <?php foreach($servers as $s):?>
+              <option value="<?=$s['id']?>" data-harga-hari="<?=$s['harga_hari']?>" data-harga-bulan="<?=$s['harga_bulan']?>" data-name="<?=esc($s['nama_server'])?>"><?=$s['flag']??'&#127470;&#127465;'?> <?=esc($s['nama_server'])?> — <?=esc($s['lokasi'])?></option>
+              <?php endforeach;?>
+            </select>
+          </div>
+          <div class="form-group"><label class="lbl">Protokol</label>
+            <div class="proto-grid">
+              <button class="proto-btn active" data-proto="vmess" onclick="selectProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg></span>VMess</button>
+              <button class="proto-btn" data-proto="vless" onclick="selectProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg></span>VLess</button>
+              <button class="proto-btn" data-proto="trojan" onclick="selectProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>Trojan</button>
+              <button class="proto-btn" data-proto="ssh" onclick="selectProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>SSH</button>
+            </div>
+          </div>
+          <div class="form-group"><label class="lbl">Durasi</label>
+            <div class="proto-grid">
+              <button class="proto-btn active" data-days="7" onclick="selectDuration(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>7 Hari</button>
+              <button class="proto-btn" data-days="30" onclick="selectDuration(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>30 Hari</button>
+              <button class="proto-btn" data-days="60" onclick="selectDuration(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>60 Hari</button>
+              <button class="proto-btn" data-days="90" onclick="selectDuration(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>90 Hari</button>
+            </div>
+          </div>
+          <div class="form-group"><label class="lbl">Username</label>
+            <input type="text" id="orderUsername" placeholder="Buat username (huruf, angka, _)" oninput="this.value=this.value.replace(/[^a-zA-Z0-9_\-]/g,'')"></div>
+          <div class="form-group"><label class="lbl">Kode Promo <span style="color:var(--muted);font-size:.7rem">(opsional)</span></label>
+            <div style="display:flex;gap:.5rem">
+              <input type="text" id="promoCode" placeholder="Masukkan kode promo" style="text-transform:uppercase;flex:1" oninput="this.value=this.value.toUpperCase()">
+              <button type="button" class="btn btn-outline" onclick="applyPromo()" id="promoBtn" style="padding:.5rem .8rem;font-size:.82rem">Cek</button>
+            </div>
+            <div id="promoStatus" style="font-size:.78rem;margin-top:.35rem"></div>
+          </div>
+          <div id="orderHarga" style="background:#0a1628;border:1px solid var(--border);border-radius:10px;padding:1rem;margin:.75rem 0;display:flex;justify-content:space-between;align-items:center">
+            <span style="color:var(--muted);font-size:.875rem">Total Harga</span>
+            <span id="hargaVal" style="font-size:1.1rem;font-weight:800;color:var(--green)">Rp 0</span>
+          </div>
+          <div class="order-actions" style="display:flex;gap:.75rem">
+            <button class="btn btn-primary" style="flex:1" onclick="doOrder()"><span id="orderBtnTxt"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:4px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Order Sekarang</span></button>
+            <?php if($trialUsed===0):?>
+            <button class="btn btn-outline" onclick="showTrialModal()" title="Trial 1 jam gratis"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Trial</button>
+            <?php endif;?>
+          </div>
+          <?php endif;?>
+          <div id="orderResult" class="result-box"></div>
         </div>
       </div>
-      <?php endif; ?>
+    </div>
 
-    <?php
-    // ============================================================
-    // [02] AKUN — VPN account list with renew/delete + connection info
-    // ============================================================
-    elseif ($page === 'akun'):
-      $accounts = [];
-      if ($db) {
-        try {
-          $aq = $db->prepare("SELECT a.*, s.name AS server_name, s.region AS server_region, s.host AS server_host FROM vpn_accounts a LEFT JOIN servers s ON s.id=a.server_id WHERE a.user_id=? ORDER BY a.created_at DESC");
-          $aq->execute([$uid]);
-          $accounts = $aq->fetchAll();
-        } catch (Exception $ex) {}
-      }
-    ?>
-      <p class="dash-sub">Daftar lengkap akun tunnel kamu. Klik [+] untuk melihat detail koneksi, atau [RENEW] untuk perpanjang.</p>
-
-      <?php if (empty($accounts)): ?>
-        <div class="section-card"><div class="body" style="padding:48px; text-align:center; color:var(--muted); font-family:var(--font-display); font-size:12px; letter-spacing:0.15em;">
-          [ BELUM ADA AKUN ]<br><br>
-          <a href="?page=servers" class="btn btn-yellow" style="display:inline-block; width:auto; padding:12px 32px;">[ ORDER AKUN PERTAMA ]</a>
-        </div></div>
-      <?php else: ?>
-        <?php foreach ($accounts as $a):
-          $expired  = strtotime($a['expiry_date'] ?? '') < time();
-          $daysLeft = max(0, (int)((strtotime($a['expiry_date'] ?? '') - time()) / 86400));
-        ?>
-          <div class="acc-card">
-            <div class="acc-protocol"><?= htmlspecialchars(strtoupper($a['protocol'] ?? '?')) ?></div>
-            <div class="acc-info">
-              <div class="acc-name">#<?= (int)$a['id'] ?> &middot; <?= htmlspecialchars($a['username']) ?> <span style="color:var(--muted); font-weight:400;">&middot; <?= htmlspecialchars($a['server_region'] ?? $a['server_name'] ?? '-') ?></span></div>
-              <div class="acc-meta">
-                IP Limit: <?= (int)$a['ip_limit'] ?> &middot;
-                <?php if ($expired): ?>
-                  <span class="pill pill-expired">EXPIRED</span>
-                <?php elseif ($daysLeft <= 7): ?>
-                  Expires <?= $daysLeft ?> hari
-                <?php else: ?>
-                  Expires <?= date('d M Y', strtotime($a['expiry_date'])) ?>(<?= $daysLeft ?> hari)
-                <?php endif; ?>
+    <!-- PAGE: AKUN -->
+    <div id="page-akun" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Semua Akun VPN</div></div>
+        <div class="card-body" id="akunList">
+          <?php
+          $allAkuns = $db->prepare("SELECT va.*, s.nama_server, s.flag, s.lokasi FROM vpn_accounts va JOIN servers s ON va.server_id=s.id WHERE va.user_id=? ORDER BY va.status ASC, va.masa_aktif ASC");
+          $allAkuns->execute([$userId]); $allAkuns=$allAkuns->fetchAll();
+          if(empty($allAkuns)):?><div class="empty-state"><div class="icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div><p>Belum ada akun</p></div>
+          <?php else: foreach($allAkuns as $a):
+            $exp=strtotime($a['masa_aktif']); $sisa=ceil(($exp-time())/86400);
+            $expClass=$sisa>7?'exp-ok':($sisa>3?'exp-warn':'exp-danger');
+          ?>
+          <div class="akun-item">
+            <span class="akun-badge badge-<?=$a['tipe']?>"><?=strtoupper($a['tipe'])?><?=$a['is_trial']?' <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>':''?></span>
+            <div class="akun-info">
+              <div class="akun-name"><?=esc($a['username'])?></div>
+              <div class="akun-meta"><?=$a['flag']??'&#127470;&#127465;'?> <?=esc($a['nama_server'])?> · <?=esc($a['status'])?></div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.3rem">
+              <div class="akun-exp <?=$expClass?>"><?=$a['is_trial']?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Trial':($a['status']==='active'?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> '.$sisa.' hari':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Expired')?></div>
+              <div style="display:flex;gap:.35rem">
+                <button class="btn btn-sm btn-outline" onclick="showAkunDetail(<?=json_encode($a)?>)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                <?php if($a['status']==='active'):?>
+                <button class="btn btn-sm btn-red" onclick="confirmDelete(<?=$a['id']?>, '<?=esc($a['username'])?>','<?=$a['tipe']?>')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                <?php endif;?>
               </div>
             </div>
-            <div class="acc-actions">
-              <button type="button" class="btn btn-sm" onclick="toggleConn(<?= (int)$a['id'] ?>)">[+]</button>
-              <form method="POST" style="display:inline;" onsubmit="return confirm('Hapus akun #<?= (int)$a['id'] ?>? Tindakan ini tidak dapat dibatalkan.');">
-                <input type="hidden" name="action" value="delete_vpn_account">
-                <input type="hidden" name="account_id" value="<?= (int)$a['id'] ?>">
-                <?= csrfField() ?>
-                <button type="submit" class="btn btn-sm btn-danger">[ DEL ]</button>
-              </form>
-              <form method="POST" style="display:inline;" onsubmit="return confirm('Perpanjang akun ini 30 hari dari saldo?');">
-                <input type="hidden" name="action" value="renew_account">
-                <input type="hidden" name="account_id" value="<?= (int)$a['id'] ?>">
-                <input type="hidden" name="days" value="30">
-                <?= csrfField() ?>
-                <button type="submit" class="btn btn-sm">[ RENEW ]</button>
-              </form>
-            </div>
           </div>
-          <div id="conn-<?= (int)$a['id'] ?>" style="display:none; margin-bottom:14px;">
-            <div class="conn-card">
-              <div class="kv"><span class="k">SERVER</span><span><?= htmlspecialchars($a['server_host'] ?? $a['server_name'] ?? '-') ?></span></div>
-              <div class="kv"><span class="k">PROTOCOL</span><span><?= htmlspecialchars($a['protocol'] ?? '-') ?></span></div>
-              <div class="kv"><span class="k">USERNAME</span><span><?= htmlspecialchars($a['username'] ?? '-') ?></span></div>
-              <div class="kv"><span class="k">PASSWORD</span><span><?= htmlspecialchars($a['password'] ?? '-') ?></span></div>
-              <div class="kv"><span class="k">IP_LIMIT</span><span><?= (int)$a['ip_limit'] ?></span></div>
-              <div class="kv"><span class="k">EXPIRES</span><span><?= htmlspecialchars($a['expiry_date'] ?? '-') ?></span></div>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      <?php endif; ?>
-
-    <?php
-    // ============================================================
-    // [03] TRAFFIC — usage breakdown
-    // ============================================================
-    elseif ($page === 'traffic'):
-      $traffic = [];
-      if ($db) {
-        try {
-          $tq = $db->query("SELECT s.name, s.region, COUNT(a.id) AS accounts, SUM(a.bytes_in) AS bytes_in, SUM(a.bytes_out) AS bytes_out FROM servers s LEFT JOIN vpn_accounts a ON a.server_id=s.id WHERE a.user_id={$uid} GROUP BY s.id ORDER BY bytes_in DESC");
-          $traffic = $tq->fetchAll();
-        } catch (Exception $ex) {}
-      }
-      $totalIn  = array_sum(array_column($traffic, 'bytes_in'));
-      $totalOut = array_sum(array_column($traffic, 'bytes_out'));
-      $fmtBytes = function($b) {
-        if ($b <= 0) return '0 B';
-        $units = ['B','KB','MB','GB','TB'];
-        $i = (int)floor(log($b, 1024));
-        return round($b / pow(1024, $i), 2).' '.$units[min($i, 4)];
-      };
-      $maxBytes = max(1, (int)max(array_column($traffic, 'bytes_in') ?: [1]));
-    ?>
-      <p class="dash-sub">Akumulasi bandwidth masuk/keluar per server. Data diperbarui oleh vpn-keepalive service.</p>
-
-      <?php if (empty($traffic)): ?>
-        <div class="section-card"><div class="body" style="padding:48px; text-align:center; color:var(--muted); font-family:var(--font-display); font-size:11px; letter-spacing:0.2em;">
-          [ BELUM ADA DATA TRAFFIC ]<br><br>
-          Traffic akan tercatat setelah akun VPN kamu aktif dan ada koneksi masuk/keluar.
-        </div></div>
-      <?php else: ?>
-        <div class="stat-grid">
-          <div class="stat-box">
-            <div class="label">[ Total IN ]</div>
-            <div class="val cyan"><?= $fmtBytes($totalIn) ?></div>
-            <div class="subtitle">Bandwidth masuk</div>
-          </div>
-          <div class="stat-box">
-            <div class="label">[ Total OUT ]</div>
-            <div class="val"><?= $fmtBytes($totalOut) ?></div>
-            <div class="subtitle">Bandwidth keluar</div>
-          </div>
-          <div class="stat-box">
-            <div class="label">[ Server Aktif ]</div>
-            <div class="val yellow"><?= count($traffic) ?></div>
-            <div class="subtitle">Server yang kamu pakai</div>
-          </div>
+          <?php endforeach; endif;?>
         </div>
+      </div>
+    </div>
 
-        <div class="section-card">
-          <div class="head"><h3>[ Per-Server Breakdown ]</h3></div>
-          <div class="body" style="padding:0;">
-            <table class="data">
-              <thead><tr>
-                <th>Server</th><th>Region</th><th>Accounts</th><th>IN</th><th>OUT</th><th>%</th>
-              </tr></thead>
-              <tbody>
-              <?php foreach ($traffic as $t): ?>
-                <?php $pct = min(100, round(((int)($t['bytes_in'] ?? 0) / $maxBytes) * 100)); ?>
-                <tr>
-                  <td><?= htmlspecialchars($t['name'] ?? '-') ?></td>
-                  <td class="mono" style="font-size:10px;"><?= htmlspecialchars($t['region'] ?? '-') ?></td>
-                  <td class="mono"><?= (int)($t['accounts'] ?? 0) ?></td>
-                  <td class="mono"><?= $fmtBytes((int)($t['bytes_in'] ?? 0)) ?></td>
-                  <td class="mono"><?= $fmtBytes((int)($t['bytes_out'] ?? 0)) ?></td>
-                  <td>
-                    <div style="height:8px; background:var(--bg); border:1px solid var(--border); position:relative; overflow:hidden;">
-                      <div style="position:absolute; left:0; top:0; bottom:0; width:<?= $pct ?>%; background:var(--cyan); transition:width 0.6s ease;"></div>
-                    </div>
-                    <span style="font-family:var(--font-display); font-size:10px; color:var(--muted);"><?= $pct ?>%</span>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      <?php endif; ?>
-
-    <?php
-    // ============================================================
-    // [04] SERVERS — browse all available servers + order form
-    // ============================================================
-    elseif ($page === 'servers'):
-      $servers = [];
-      if ($db) {
-        try { $servers = $db->query("SELECT * FROM servers WHERE status='ready' ORDER BY monthly_price ASC")->fetchAll(); } catch (Exception $ex) {}
-      }
-      $order_server = (int)($_GET['server'] ?? 0);
-    ?>
-      <p class="dash-sub">Pilih server, protokol, dan durasi. Pembayaran dipotong otomatis dari saldo wallet.</p>
-
-      <?php if (empty($servers)): ?>
-        <div class="section-card"><div class="body" style="padding:48px; text-align:center; color:var(--muted);">Belum ada server yang tersedia. Hubungi admin.</div></div>
-      <?php else: ?>
-        <?php foreach ($servers as $s): ?>
-          <div class="section-card">
-            <div class="head">
-              <h3>[ <?= htmlspecialchars($s['region'] ?? '?') ?> &middot; <?= htmlspecialchars($s['name']) ?> ]</h3>
-              <span style="font-family:var(--font-display); font-size:14px; font-weight:700; color:var(--yellow);">Rp <?= number_format((int)$s['monthly_price'], 0, ',', '.') ?> <span style="font-size:10px; color:var(--muted); font-weight:400;">/bulan</span></span>
+    <!-- PAGE: TOPUP -->
+    <div id="page-topup" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>Isi Saldo</div></div>
+        <div class="card-body">
+          <div class="form-group"><label class="lbl">Nominal Topup</label>
+            <input type="number" id="topupAmount" placeholder="Min. Rp 5.000" min="5000" step="1000"></div>
+          <div class="form-group"><label class="lbl">Metode Pembayaran</label>
+            <div class="topup-methods" id="topupMethods">
+              <button class="method-btn active" data-method="manual_transfer" onclick="selectMethod(this)"><span class="m-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="9" y1="22" x2="15" y2="22"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg></span><span class="m-name">Transfer Bank</span></button>
+              <?php if(getSetting('qris_image')):?><button class="method-btn" data-method="qris" onclick="selectMethod(this)"><span class="m-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="m-name">QRIS</span></button><?php endif;?>
+              <?php if(getSetting('dana_number')):?><button class="method-btn" data-method="dana" onclick="selectMethod(this)"><span class="m-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span><span class="m-name">Dana</span></button><?php endif;?>
+              <?php if(getSetting('gopay_number')):?><button class="method-btn" data-method="gopay" onclick="selectMethod(this)"><span class="m-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span><span class="m-name">GoPay</span></button><?php endif;?>
+              <?php if(getSetting('shopee_number')):?><button class="method-btn" data-method="shopepay" onclick="selectMethod(this)"><span class="m-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span><span class="m-name">ShopeePay</span></button><?php endif;?>
             </div>
-            <div class="body">
-              <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-bottom:14px; font-family:var(--font-display); font-size:10px; color:var(--muted);">
-                <div>HOST  &middot; <?= htmlspecialchars($s['host'] ?? '-') ?></div>
-                <div>LOAD  &middot; <?= htmlspecialchars((string)($s['load_pct'] ?? 'N/A')) ?></div>
-                <div>LIMIT &middot; <?= (int)($s['max_accounts'] ?? 100) ?> akun</div>
-                <div>STATUS &middot; <span class="pill pill-online">READY</span></div>
-              </div>
+          </div>
+          <div id="paymentInfo" style="background:#0a1628;border:1px solid var(--border);border-radius:10px;padding:1rem;margin:.75rem 0">
+            <div id="bankInfo">
+              <p style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Transfer ke rekening berikut:</p>
+              <p style="font-weight:700"><?=getSetting('bank_name')?> — <?=getSetting('bank_account')?></p>
+              <p style="color:var(--muted);font-size:.875rem">a/n <?=getSetting('bank_holder')?></p>
+            </div>
+            <div id="danaInfo" style="display:none"><p style="font-weight:700">Dana: <?=getSetting('dana_number')?></p></div>
+            <div id="gopayInfo" style="display:none"><p style="font-weight:700">GoPay: <?=getSetting('gopay_number')?></p></div>
+            <div id="shopeeInfo" style="display:none"><p style="font-weight:700">ShopeePay: <?=getSetting('shopee_number')?></p></div>
+            <div id="qrisInfo" style="display:none">
+              <?php if(getSetting('qris_image')):?><img src="<?=esc(getSetting('qris_image'))?>" style="max-width:200px;border-radius:8px;margin-top:.5rem"><?php endif;?>
+            </div>
+          </div>
+          <div class="form-group"><label class="lbl">Upload Bukti Transfer (opsional)</label>
+            <input type="file" id="buktiFile" accept="image/*"></div>
+          <button class="btn btn-primary" style="width:100%" onclick="doTopup()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Kirim Permintaan Topup</button>
+          <div id="topupResult" style="margin-top:1rem"></div>
+        </div>
+      </div>
+    </div>
 
-              <form method="POST" style="background:var(--bg); border:1px dashed var(--border); padding:14px;">
-                <input type="hidden" name="action" value="place_order">
-                <?= csrfField() ?>
-                <input type="hidden" name="server_id" value="<?= (int)$s['id'] ?>">
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>Protokol</label>
-                    <select name="protocol" required>
-                      <option value="ssh">SSH / OpenSSH</option>
-                      <option value="vmess">VMess (WS + gRPC)</option>
-                      <option value="vless">VLess (WS + gRPC)</option>
-                      <option value="trojan">Trojan (WS + gRPC)</option>
-                      <option value="udp-custom">UDP Custom</option>
-                      <option value="zivpn-udp">ZIVPN UDP</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>Durasi (hari)</label>
-                    <input type="number" name="days" value="30" min="1" max="365" required>
-                  </div>
+    <!-- PAGE: SERVER -->
+    <div id="page-server" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Status Server</div></div>
+        <div class="card-body">
+          <?php foreach($servers as $s): $st=$s['status'];?>
+          <div class="akun-item">
+            <div><?=$s['flag']??'&#127470;&#127465;'?></div>
+            <div class="akun-info">
+              <div class="akun-name"><?=esc($s['nama_server'])?></div>
+              <div class="akun-meta"><?=esc($s['lokasi'])?> · <?=esc($s['code_server'])?></div>
+            </div>
+            <div style="text-align:right">
+              <span><span class="server-status s-<?=$st?>"></span><?=$st==='ready'?'Online':($st==='maintenance'?'Maintenance':'Offline')?></span>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem"><?=formatRupiah($s['harga_hari'])?>/hari · <?=formatRupiah($s['harga_bulan'])?>/bulan</div>
+            </div>
+          </div>
+          <?php endforeach;?>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <!-- PAGE: RIWAYAT -->
+    <div id="page-riwayat" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Riwayat Transaksi</div></div>
+        <div class="card-body">
+          <?php $allTrx=$db->prepare("SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 50");
+          $allTrx->execute([$userId]); $allTrx=$allTrx->fetchAll();
+          if(empty($allTrx)):?><div class="empty-state"><div class="icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><p>Belum ada transaksi</p></div>
+          <?php else: foreach($allTrx as $t):?>
+          <div class="trx-item trx-<?=$t['type']?>">
+            <div class="trx-icon"><?=$t['type']==='topup'?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>':($t['type']==='refund'?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>':'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>')?></div>
+            <div class="trx-info"><div class="trx-desc"><?=esc($t['keterangan']??ucfirst($t['type']))?></div>
+              <div class="trx-date"><?=date('d M Y, H:i',strtotime($t['created_at']))?> · <?=$t['status']?></div></div>
+            <div class="trx-amount" style="color:<?=$t['type']==='topup'||$t['type']==='refund'?'var(--green)':'var(--red)'?>"><?=$t['type']==='topup'||$t['type']==='refund'?'+':'-'?><?=formatRupiah($t['amount'])?></div>
+          </div>
+          <?php endforeach; endif;?>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: SETTING -->
+    <div id="page-setting" style="display:none">
+      <div class="card">
+        <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Setting Akun</div></div>
+        <div class="card-body">
+            <div id="settingAlert"></div>
+          <form id="profileForm">
+            <div class="form-group"><label class="lbl">Foto Profil</label>
+              <div style="display:flex;align-items:center;gap:1rem">
+                <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#fff;flex-shrink:0">
+                  <?php if(!empty($user['avatar'])):?><img src="<?=esc($user['avatar'])?>" style="width:100%;height:100%;object-fit:cover"><?php else:?><?=strtoupper(substr($username,0,1))?><?php endif;?>
                 </div>
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>Promo Code (opsional)</label>
-                    <input type="text" name="promo_code" placeholder="PROMO2025" maxlength="32">
-                  </div>
-                  <div class="form-group" style="display:flex; align-items:flex-end;">
-                    <button type="submit" class="btn btn-yellow" data-confirm="Konfirmasi buat order akun baru di server pilihanmu?" style="width:100%;">[ DEPLOY SEKARANG ]</button>
-                  </div>
+                <div>
+                  <input type="file" id="avatarFile" accept="image/*" style="font-size:.82rem">
+                  <button type="button" class="btn btn-sm btn-outline" onclick="uploadAvatar()" style="margin-top:.35rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload</button>
+                  <?php if(!empty($user['avatar'])):?><button type="button" class="btn btn-sm btn-red" onclick="deleteAvatar()" style="margin-top:.35rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:3px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Hapus</button><?php endif;?>
                 </div>
-              </form>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      <?php endif; ?>
-
-    <?php
-    // ============================================================
-    // [05] ORDERS — full transaction history
-    // ============================================================
-    elseif ($page === 'orders'):
-      $txs = [];
-      if ($db) {
-        try {
-          $tq = $db->prepare("SELECT t.*, s.name AS server_name FROM transactions t LEFT JOIN servers s ON s.id=t.server_id WHERE t.user_id=? ORDER BY t.created_at DESC LIMIT 100");
-          $tq->execute([$uid]);
-          $txs = $tq->fetchAll();
-        } catch (Exception $ex) {}
-      }
-      $totalSpent = array_sum(array_column(array_filter($txs, fn($t) => ($t['type'] ?? '') === 'order'), 'amount'));
-    ?>
-      <p class="dash-sub">Seluruh transaksi order & renewal yang kamu lakukan. Total pembelanjaan: <strong style="color:var(--yellow);">Rp <?= number_format((int)$totalSpent, 0, ',', '.') ?></strong>.</p>
-
-      <?php if (empty($txs)): ?>
-        <div class="section-card"><div class="body" style="padding:48px; text-align:center; color:var(--muted);">Belum ada transaksi. <a href="?page=servers" style="color:var(--cyan);">Order sekarang</a>.</div></div>
-      <?php else: ?>
-        <div class="table-wrap">
-          <table class="data">
-            <thead><tr>
-              <th>ID</th><th>Tanggal</th><th>Type</th><th>Server</th><th>Method</th><th>Amount</th><th>Status</th>
-            </tr></thead>
-            <tbody>
-            <?php foreach ($txs as $t): ?>
-              <tr>
-                <td class="mono">#<?= (int)$t['id'] ?></td>
-                <td class="mono" style="font-size:10px;"><?= htmlspecialchars($t['created_at'] ?? '-') ?></td>
-                <td><span class="pill <?= $t['type']==='order'?'pill-protocol':($t['type']==='renew'?'pill-online':($t['type']==='topup'?'pill-active':'')) ?>"><?= htmlspecialchars($t['type']) ?></span></td>
-                <td><?= htmlspecialchars($t['server_name'] ?? '-') ?></td>
-                <td class="mono" style="font-size:10px;"><?= htmlspecialchars($t['method'] ?? ($t['type']==='order' || $t['type']==='renew' ? 'saldo' : '-')) ?></td>
-                <td class="mono">Rp <?= number_format((int)$t['amount'], 0, ',', '.') ?></td>
-                <td><span class="pill <?= $t['status']==='success'?'pill-active':($t['status']==='pending'?'pill-pending':'pill-expired') ?>"><?= htmlspecialchars($t['status']) ?></span></td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      <?php endif; ?>
-
-    <?php
-    // ============================================================
-    // [06] TOPUP — request saldo topup via manual payment
-    // ============================================================
-    elseif ($page === 'topup'):
-      $pending = [];
-      if ($db) {
-        try {
-          $pq = $db->prepare("SELECT * FROM topup_requests WHERE user_id=? ORDER BY created_at DESC LIMIT 10");
-          $pq->execute([$uid]);
-          $pending = $pq->fetchAll();
-        } catch (Exception $ex) {}
-      }
-      $dana  = getSetting('dana_number', '');
-      $gopay = getSetting('gopay_number', '');
-      $ovo   = getSetting('ovo_number', '');
-      $qris  = getSetting('qris_image', '');
-    ?>
-      <p class="dash-sub">Tambah saldo wallet. Pilih nominal, transfer ke salah satu metode, lalu upload bukti di sini. Admin akan approve manual.</p>
-
-      <div class="section-card">
-        <div class="head"><h3>[ Nominal ]</h3></div>
-        <div class="body">
-          <div class="amt-grid">
-            <button type="button" class="amt-btn" data-amt="10000" onclick="setAmt(this)"><span class="num">10K</span>Percobaan</button>
-            <button type="button" class="amt-btn" data-amt="25000" onclick="setAmt(this)"><span class="num">25K</span>1 Bulan</button>
-            <button type="button" class="amt-btn active" data-amt="50000" onclick="setAmt(this)"><span class="num">50K</span>2 Bulan</button>
-            <button type="button" class="amt-btn" data-amt="100000" onclick="setAmt(this)"><span class="num">100K</span>4 Bulan</button>
-          </div>
-          <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="topup_request">
-            <?= csrfField() ?>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Nominal (Rp)</label>
-                <input type="number" name="amount" id="amtField" value="50000" min="5000" max="10000000" required>
-              </div>
-              <div class="form-group">
-                <label>Metode Pembayaran</label>
-                <select name="method" id="methodField" required>
-                  <option value="dana">DANA</option>
-                  <option value="gopay">GoPay</option>
-                  <option value="ovo">OVO</option>
-                  <option value="shopeepay">ShopeePay</option>
-                  <option value="qris">QRIS</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                </select>
               </div>
             </div>
-
-            <h4 style="font-family:var(--font-display); font-size:10px; color:var(--cyan); letter-spacing:0.22em; text-transform:uppercase; margin:18px 0 10px;">[ Nomor Tujuan ]</h4>
-            <div class="pmt-grid">
-              <?php if ($dana):  ?><div class="pmt-tile" data-method="dana" onclick="selectMethod(this)"><div class="name">DANA</div><div class="num"><?= htmlspecialchars($dana) ?></div></div><?php endif; ?>
-              <?php if ($gopay): ?><div class="pmt-tile" data-method="gopay" onclick="selectMethod(this)"><div class="name">GoPay</div><div class="num"><?= htmlspecialchars($gopay) ?></div></div><?php endif; ?>
-              <?php if ($ovo):   ?><div class="pmt-tile" data-method="ovo" onclick="selectMethod(this)"><div class="name">OVO</div><div class="num"><?= htmlspecialchars($ovo) ?></div></div><?php endif; ?>
-              <?php if ($qris):  ?><div class="pmt-tile" data-method="qris" onclick="selectMethod(this)"><div class="name">QRIS</div><div class="num qris">[ SCAN QR ]</div></div><?php endif; ?>
-              <div class="pmt-tile" data-method="bank_transfer" onclick="selectMethod(this)"><div class="name">BANK</div><div class="num">[ Hubungi Admin ]</div></div>
-            </div>
-
-            <div class="form-group">
-              <label>Bukti Transfer (JPG/PNG/WebP, max 5MB)</label>
-              <input type="file" name="proof" accept="image/jpeg,image/png,image/webp" required>
-            </div>
-
-            <button type="submit" class="btn btn-yellow" style="width:100%; padding:14px; font-size:13px;" onclick="return confirm('Konfirmasi submit permintaan topup?')">[ SUBMIT TOPUP REQUEST ]</button>
+            <div class="form-group"><label class="lbl">Username</label>
+              <input type="text" value="<?=esc($user['username'])?>" disabled style="opacity:.5"></div>
+            <div class="form-group"><label class="lbl">Email</label>
+              <input type="email" id="settingEmail" value="<?=esc($user['email'])?>"></div>
+            <div class="form-group"><label class="lbl">WhatsApp (opsional)</label>
+              <input type="text" id="settingWa" value="<?=esc($user['whatsapp']??'')?>" placeholder="08xxxxxxxxxx"></div>
+            <div class="form-group"><label class="lbl">Password Baru (kosongkan jika tidak diganti)</label>
+              <input type="password" id="settingPass" placeholder="••••••••"></div>
+            <div class="form-group"><label class="lbl">Konfirmasi Password Baru</label>
+              <input type="password" id="settingPassConfirm" placeholder="••••••••"></div>
+            <button type="button" class="btn btn-primary" onclick="saveProfile()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Simpan Perubahan</button>
           </form>
         </div>
       </div>
+    </div>
 
-      <?php if (!empty($pending)): ?>
-      <div class="section-card">
-        <div class="head"><h3>[ Topup History ]</h3></div>
-        <div class="body" style="padding:0;">
-          <table class="data">
-            <thead><tr><th>ID</th><th>Tanggal</th><th>Amount</th><th>Method</th><th>Status</th><th>Bukti</th></tr></thead>
-            <tbody>
-            <?php foreach ($pending as $p): ?>
-              <tr>
-                <td class="mono">#<?= (int)$p['id'] ?></td>
-                <td class="mono" style="font-size:10px;"><?= htmlspecialchars($p['created_at'] ?? '-') ?></td>
-                <td class="mono">Rp <?= number_format((int)$p['amount'], 0, ',', '.') ?></td>
-                <td class="mono" style="font-size:10px;"><?= htmlspecialchars($p['method']) ?></td>
-                <td><span class="pill <?= $p['status']==='approved'?'pill-active':($p['status']==='pending'?'pill-pending':'pill-expired') ?>"><?= htmlspecialchars($p['status']) ?></span></td>
-                <td><?php if (!empty($p['proof_image'])): ?><a href="<?= htmlspecialchars($p['proof_image']) ?>" target="_blank" style="color:var(--cyan); font-family:var(--font-display); font-size:10px; letter-spacing:0.15em;">[ VIEW IMG ]</a><?php endif; ?></td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
+  </div><!-- .content -->
+</div><!-- .main -->
+
+<!-- MODAL: GitHub CTA -->
+<div class="modal" id="modalGithub">
+  <div class="modal-backdrop" onclick="closeModal('modalGithub')"></div>
+  <div class="modal-box" style="max-width:460px">
+    <button class="modal-close" onclick="closeModal('modalGithub')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <div style="text-align:center;padding:.5rem 0">
+      <div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.15));display:flex;align-items:center;justify-content:center;margin:0 auto 1rem">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="#818cf8"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
       </div>
-      <?php endif; ?>
+      <div style="font-weight:800;font-size:1.15rem;color:var(--text);margin-bottom:.4rem">Script Tunneling Gratis!</div>
+      <div style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem;line-height:1.6">Dapatkan script tunneling premium ini secara <strong>GRATIS</strong>! Full fitur, multi-protokol, siap install di VPS kamu.</div>
+      <a href="https://github.com/putrinuroktavia234-max/Tunnel.git" target="_blank" style="display:inline-flex;align-items:center;gap:.5rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:.6rem 1.5rem;border-radius:10px;font-size:.85rem;font-weight:700;text-decoration:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        Ambil Script di GitHub
+      </a>
+      <div style="margin-top:1rem"><button class="btn btn-outline" style="font-size:.78rem" onclick="closeModal('modalGithub')">Nanti Saja</button></div>
+    </div>
+  </div>
+</div>
 
-      <script>
-        function setAmt(btn) {
-          document.querySelectorAll('.amt-btn').forEach(function(b){ b.classList.remove('active'); });
-          btn.classList.add('active');
-          document.getElementById('amtField').value = btn.dataset.amt;
-        }
-        function selectMethod(tile) {
-          document.querySelectorAll('.pmt-tile').forEach(function(t){ t.classList.remove('active'); });
-          tile.classList.add('active');
-          document.getElementById('methodField').value = tile.dataset.method;
-        }
-        // Pre-select first available payment method
-        document.addEventListener('DOMContentLoaded', function() {
-          var first = document.querySelector('.pmt-tile');
-          if (first) selectMethod(first);
-        });
-      </script>
+<!-- MODAL: Akun Detail -->
+<div class="modal" id="modalAkun">
+  <div class="modal-backdrop" onclick="closeModal('modalAkun')"></div>
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalAkun')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <div class="modal-title"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:6px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Detail Akun VPN</div>
+    <div id="akunDetailContent"></div>
+  </div>
+</div>
 
-    <?php
-    // ============================================================
-    // [07] SETTINGS — profile + password + danger zone
-    // ============================================================
-    elseif ($page === 'settings'):
-    ?>
-      <p class="dash-sub">Profil akun, keamanan, dan koneksi Telegram bot.</p>
+<!-- MODAL: Trial -->
+<div class="modal" id="modalTrial">
+  <div class="modal-backdrop" onclick="closeModal('modalTrial')"></div>
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('modalTrial')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <div class="modal-title"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:6px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Trial VPN Gratis</div>
+    <div class="alert alert-info" style="font-size:.82rem">Trial 1 jam gratis, 1x per hari, quota 1GB.</div>
+    <div class="form-group"><label class="lbl">Server</label>
+      <select id="trialServer">
+        <?php foreach($servers as $s):?><option value="<?=$s['id']?>"><?=$s['flag']??'&#127470;&#127465;'?> <?=esc($s['nama_server'])?></option><?php endforeach;?>
+      </select></div>
+    <div class="form-group"><label class="lbl">Protokol</label>
+      <div class="proto-grid">
+        <button class="proto-btn active" data-proto="vmess" onclick="selectTrialProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg></span>VMess</button>
+        <button class="proto-btn" data-proto="vless" onclick="selectTrialProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg></span>VLess</button>
+        <button class="proto-btn" data-proto="trojan" onclick="selectTrialProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>Trojan</button>
+        <button class="proto-btn" data-proto="ssh" onclick="selectTrialProto(this)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>SSH</button>
+      </div></div>
+    <div class="form-group"><label class="lbl">Username</label>
+      <input type="text" id="trialUsername" placeholder="Buat username trial"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:.5rem" onclick="doTrial()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Ambil Trial Gratis</button>
+    <div id="trialResult" class="result-box"></div>
+  </div>
+</div>
 
-      <div class="section-card">
-        <div class="head"><h3>[ Profil ]</h3></div>
-        <div class="body">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Username</label>
-              <input type="text" value="<?= htmlspecialchars($me['username']) ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-            <div class="form-group">
-              <label>Email</label>
-              <input type="email" value="<?= htmlspecialchars($me['email']) ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Role</label>
-              <input type="text" value="<?= htmlspecialchars(strtoupper($me['role'] ?? 'user')) ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-            <div class="form-group">
-              <label>Saldo</label>
-              <input type="text" value="Rp <?= number_format($saldo, 0, ',', '.') ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>IP Terakhir (login)</label>
-              <input type="text" value="<?= htmlspecialchars($me['ip_address'] ?? '-') ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-            <div class="form-group">
-              <label>Tanggal Daftar</label>
-              <input type="text" value="<?= htmlspecialchars($me['created_at'] ?? '-') ?>" readonly style="opacity:0.6; cursor:not-allowed;">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-card">
-        <div class="head"><h3>[ Ganti Password ]</h3></div>
-        <div class="body">
-          <form method="POST">
-            <input type="hidden" name="action" value="change_password">
-            <?= csrfField() ?>
-            <div class="form-group">
-              <label>Password Saat Ini</label>
-              <input type="password" name="current_password" required autocomplete="current-password">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Password Baru</label>
-                <input type="password" name="new_password" required minlength="6" autocomplete="new-password">
-              </div>
-              <div class="form-group">
-                <label>Konfirmasi</label>
-                <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password">
-              </div>
-            </div>
-            <button type="submit" class="btn btn-primary">[ UPDATE PASSWORD ]</button>
-          </form>
-        </div>
-      </div>
-
-      <div class="danger-zone">
-        <h4>[ Danger Zone ]</h4>
-        <p>Menghapus akun akan menghapus semua data terkait: akun VPN, transaksi, dan topup request. Tindakan ini tidak dapat dibatalkan.</p>
-        <form method="POST" onsubmit="return confirm('PERMANENT. Ketik username konfirmasi untuk lanjut.');">
-          <input type="hidden" name="action" value="delete_account">
-          <?= csrfField() ?>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Ketik username untuk konfirmasi: <strong><?= htmlspecialchars($me['username']) ?></strong></label>
-              <input type="text" name="confirm_username" placeholder="<?= htmlspecialchars($me['username']) ?>" required>
-            </div>
-            <div class="form-group" style="display:flex; align-items:flex-end;">
-              <button type="submit" class="btn btn-danger" style="background:var(--danger); color:var(--bg); border-color:var(--danger); width:100%;">[ DELETE AKUN PERMANENT ]</button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-    <?php endif; ?>
-
-  </main>
+<!-- MODAL: Konfirmasi Delete -->
+<div class="modal" id="modalDelete">
+  <div class="modal-backdrop" onclick="closeModal('modalDelete')"></div>
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Hapus Akun</div>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:1.25rem">Yakin ingin menghapus akun <strong id="deleteUsername"></strong>? Akun akan dihapus dari server.</p>
+    <div style="display:flex;gap:.75rem">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal('modalDelete')">Batal</button>
+      <button class="btn btn-red" style="flex:1" onclick="doDelete()" id="deleteBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Hapus</button>
+    </div>
+  </div>
 </div>
 
 <script>
-// Toggle account connection details card
-function toggleConn(id) {
-  var el = document.getElementById('conn-' + id);
-  if (el) el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+const SVG = {
+  cart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:3px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+  ok: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:3px"><path d="M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z"/><polyline points="9 12 11 14 15 10"/></svg>',
+  no: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:3px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  gift: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
+  eye: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+  trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  dl: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  terminal: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>'
+};
+let currentProto = 'vmess';
+let currentDays = 7;
+let currentTrialProto = 'vmess';
+let deleteAkunId = null;
+let deleteAkunType = null;
+const pages = ['home','order','akun','topup','server','wildcard','riwayat','setting'];
+const pageTitles = {home:'Dashboard',order:'Order VPN',akun:'Akun VPN',topup:'Isi Saldo',server:'Status Server',wildcard:'Wildcard',riwayat:'Riwayat',setting:'Setting Akun'};
+
+function showPage(p) {
+  pages.forEach(n => document.getElementById('page-'+n).style.display = n===p?'':'none');
+  document.getElementById('pageTitle').textContent = pageTitles[p]||p;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('pageAlert').innerHTML = '';
+  if(window.innerWidth<=768){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarBackdrop').classList.remove('show');}
+  updateHarga();
 }
-// Logout confirmation for nav link
-// Universal data-confirm handler — safe from server-data interpolation
-document.querySelectorAll('[data-confirm]').forEach(function(el){
-  el.addEventListener('click', function(e){
-    if (!confirm(el.dataset.confirm)) e.preventDefault();
-  });
-});
 
-// Logout confirmation for nav link
-// Universal data-confirm handler — safe from server-data interpolation
-document.querySelectorAll('[data-confirm]').forEach(function(el){
-  el.addEventListener('click', function(e){
-    if (!confirm(el.dataset.confirm)) e.preventDefault();
-  });
-});
+function selectProto(btn) {
+  document.querySelectorAll('#page-order .proto-btn[data-proto]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); currentProto=btn.dataset.proto;
+}
+function selectTrialProto(btn) {
+  document.querySelectorAll('#modalTrial .proto-btn[data-proto]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); currentTrialProto=btn.dataset.proto;
+}
+function selectDuration(btn) {
+  document.querySelectorAll('.proto-btn[data-days]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); currentDays=parseInt(btn.dataset.days); updateHarga();
+}
+function updateHarga() {
+  const sel=document.getElementById('orderServer');
+  if(!sel) return;
+  const opt=sel.options[sel.selectedIndex];
+  if(!opt) return;
+  const hPd=parseFloat(opt.dataset.hargaHari||0), hPm=parseFloat(opt.dataset.hargaBulan||0);
+  let h = currentDays >= 30 ? (hPm * Math.floor(currentDays/30)) + (hPd * (currentDays%30)) : hPd * currentDays;
+  document.getElementById('hargaVal').textContent='Rp '+new Intl.NumberFormat('id-ID').format(h);
+}
+document.getElementById('orderServer')?.addEventListener('change', function(){updateHarga();applyPromo(true)});
+updateHarga();
 
-// Logout confirmation for nav link
-document.querySelector('a[href="index.php?logout=1"]')?.addEventListener('click', function(e) {
-  if (!confirm('Logout dari sesi dashboard?')) e.preventDefault();
-});
+let promoApplied = null;
+
+function applyPromo(skipAlert) {
+  const code = document.getElementById('promoCode').value.trim();
+  const status = document.getElementById('promoStatus');
+  const btn = document.getElementById('promoBtn');
+  if (!code) {
+    promoApplied = null;
+    status.innerHTML = '';
+    updateHarga();
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading"></span>';
+  fetch('/api/check_promo.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'code='+encodeURIComponent(code)})
+  .then(r=>r.json()).then(res=>{
+    if(res.success) {
+      promoApplied = res.data;
+      status.innerHTML = '<span style="color:var(--success)">&#10003; '+res.data.label+'</span>';
+      updateHarga();
+    } else {
+      promoApplied = null;
+      if(!skipAlert) status.innerHTML = '<span style="color:var(--danger)">&#10007; '+escHtml(res.message)+'</span>';
+      updateHarga();
+    }
+  }).catch(()=>{promoApplied=null;}).finally(()=>{btn.disabled=false;btn.innerHTML='Cek'});
+}
+
+function updateHarga() {
+  const sel=document.getElementById('orderServer');
+  if(!sel) return;
+  const opt=sel.options[sel.selectedIndex];
+  if(!opt) return;
+  const hPd=parseFloat(opt.dataset.hargaHari||0), hPm=parseFloat(opt.dataset.hargaBulan||0);
+  let h = currentDays >= 30 ? (hPm * Math.floor(currentDays/30)) + (hPd * (currentDays%30)) : hPd * currentDays;
+  let diskon = 0;
+  let el = document.getElementById('hargaVal');
+  if(promoApplied) {
+    if(promoApplied.type==='percent') diskon = Math.floor(h * promoApplied.val / 100);
+    else diskon = promoApplied.val;
+    if(diskon > h) diskon = h;
+    let total = h - diskon;
+    el.innerHTML = '<span style="text-decoration:line-through;color:var(--muted);font-size:.85rem;font-weight:400;margin-right:6px">Rp '+new Intl.NumberFormat('id-ID').format(h)+'</span> Rp '+new Intl.NumberFormat('id-ID').format(total);
+  } else {
+    el.innerHTML = 'Rp '+new Intl.NumberFormat('id-ID').format(h);
+  }
+}
+
+function selectMethod(btn) {
+  document.querySelectorAll('.method-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const m=btn.dataset.method;
+  ['bankInfo','danaInfo','gopayInfo','shopeeInfo','qrisInfo'].forEach(id=>document.getElementById(id).style.display='none');
+  const map={manual_transfer:'bankInfo',dana:'danaInfo',gopay:'gopayInfo',shopepay:'shopeeInfo',qris:'qrisInfo'};
+  if(map[m]) document.getElementById(map[m]).style.display='';
+}
+
+function toggleSidebar(){
+  const s=document.getElementById('sidebar');
+  const b=document.getElementById('sidebarBackdrop');
+  s.classList.toggle('open');
+  b.classList.toggle('show',s.classList.contains('open'));
+}
+function showModal(id){document.getElementById(id).classList.add('show')}
+function closeModal(id){document.getElementById(id).classList.remove('show')}
+function showTrialModal(){showModal('modalTrial');document.getElementById('trialResult').classList.remove('show')}
+<?php if ($showGithub):?>showModal('modalGithub');<?php endif;?>
+
+function doOrder() {
+  const username=document.getElementById('orderUsername').value.trim();
+  const serverId=document.getElementById('orderServer').value;
+  if(!username){showAlert('pageAlert','Username wajib diisi!','error');return;}
+  const btn=document.getElementById('orderBtnTxt');
+  btn.innerHTML='<span class="loading"></span> Memproses...';
+  const fd=new FormData();
+  fd.append('server_id',serverId); fd.append('tipe',currentProto);
+  fd.append('username',username); fd.append('days',currentDays);
+  if(promoApplied) fd.append('promo_code',promoApplied.code);
+  fetch('/api/create_order.php',{method:'POST',body:fd})
+  .then(r=>r.json()).then(res=>{
+    btn.innerHTML=SVG.cart+' Order Sekarang';
+    if(res.success){
+      let sel=document.getElementById('orderServer');
+      let opt=sel.options[sel.selectedIndex];
+      res.tipe = currentProto;
+      res.server = opt?.dataset?.name||'';
+      document.getElementById('akunDetailContent').innerHTML = buildDetailHTML(res, true);
+      document.querySelector('#modalAkun .modal-title').innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:6px"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>Akun Berhasil Dibuat';
+      showModal('modalAkun');
+      showAlert('pageAlert',SVG.ok+' Akun berhasil dibuat!','success');
+    } else {
+      const box=document.getElementById('orderResult');
+      box.innerHTML='<div class="alert alert-error">'+SVG.no+' '+escHtml(res.message)+'</div>';
+      box.classList.add('show');
+    }
+  }).catch(()=>{btn.innerHTML=SVG.cart+' Order Sekarang';});
+}
+
+function doTrial() {
+  const username=document.getElementById('trialUsername').value.trim();
+  const serverId=document.getElementById('trialServer').value;
+  if(!username){return;}
+  const fd=new FormData();
+  fd.append('server_id',serverId); fd.append('tipe',currentTrialProto);
+  fd.append('username',username); fd.append('days',1); fd.append('is_trial',1);
+  fetch('/api/create_order.php',{method:'POST',body:fd})
+  .then(r=>r.json()).then(res=>{
+    closeModal('modalTrial');
+    if(res.success){
+      res.tipe = currentTrialProto;
+      res.server = 'Trial';
+      document.getElementById('akunDetailContent').innerHTML = buildDetailHTML(res, true);
+      document.querySelector('#modalAkun .modal-title').innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:6px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Trial Berhasil';
+      showModal('modalAkun');
+      showAlert('pageAlert',SVG.ok+' Akun trial berhasil dibuat!','success');
+    } else {
+      showAlert('pageAlert',SVG.no+' '+escHtml(res.message),'error');
+    }
+  });
+}
+
+function detailRow(label, value, canCopy) {
+  let v = escHtml(value||'');
+  let copyBtn = canCopy
+    ? `<button class="copy-btn" onclick="event.stopPropagation();copyText('${encodeURIComponent(value)}',this)" title="Salin ${label}">${SVG.copy}</button>`
+    : '';
+  return `<div class="result-row"><span class="result-key">${label}</span><span class="result-val">${v}${copyBtn}</span></div>`;
+}
+
+function buildDetailHTML(d, isOrderResult) {
+  let html = '';
+  if(isOrderResult) html += `<div class="alert alert-success" style="margin-bottom:.75rem">${SVG.ok} Akun berhasil dibuat!</div>`;
+
+  // Badge tipe
+  let tipeBadge = d.tipe ? `<span class="akun-badge badge-${d.tipe}" style="font-size:.75rem;padding:.2rem .5rem">${d.tipe.toUpperCase()}</span>` : '';
+  if(d.is_trial) tipeBadge += ' <span style="color:var(--orange);font-size:.75rem">Trial</span>';
+
+  // Detail rows
+  html += detailRow('Username', d.username, true);
+  html += `<div class="result-row"><span class="result-key">Tipe</span><span class="result-val">${tipeBadge}</span></div>`;
+  if(d.uuid) html += detailRow('UUID', d.uuid, true);
+  if(d.password) html += detailRow('Password', d.password, true);
+  if(d.server) html += detailRow('Server', d.server, false);
+  let expiry = d.expired || d.masa_aktif || '';
+  if(expiry) html += detailRow('Masa Aktif', expiry, false);
+  if(d.status) html += detailRow('Status', d.status, false);
+
+  // Config Links
+  let hasLinks = d.link_tls || d.link_nontls || d.link_grpc;
+  if(hasLinks) {
+    html += `<div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+      <div style="font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.5rem">Konfigurasi</div>`;
+    if(d.link_tls) html += linkRow('TLS', d.link_tls);
+    if(d.link_nontls) html += linkRow('NonTLS', d.link_nontls);
+    if(d.link_grpc) html += linkRow('gRPC', d.link_grpc);
+    html += `</div>`;
+  }
+
+  // Download
+  if(d.download) {
+    html += `<a href="${escHtml(d.download)}" target="_blank" class="btn btn-outline btn-sm" style="width:100%;margin-top:.75rem">${SVG.dl} Download Config</a>`;
+  }
+
+  // Copy All button
+  html += `<button class="btn btn-outline btn-sm" onclick="copyAllDetails(this)" style="width:100%;margin-top:.5rem" data-d='${encodeURIComponent(JSON.stringify(d))}'>${SVG.copy} Salin Semua Detail</button>`;
+
+  // Footer actions for order result
+  if(isOrderResult) {
+    html += `<div style="display:flex;gap:.5rem;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+      <button class="btn btn-outline" onclick="closeModal('modalAkun')" style="flex:1">Tutup</button>
+      <button class="btn btn-primary" onclick="closeModal('modalAkun');showPage('akun');location.reload()" style="flex:1">Lihat di Akun VPN</button>
+    </div>`;
+  }
+
+  return html;
+}
+
+function linkRow(label, link) {
+  return `<div class="result-row link-row">
+    <span class="result-key">${label}</span>
+    <span class="result-val" style="font-size:.7rem;word-break:break-all;font-family:monospace">${escHtml(link.substring(0,45))}...</span>
+    <button class="copy-btn" onclick="event.stopPropagation();copyText('${encodeURIComponent(link)}',this)" title="Salin ${label}">${SVG.copy}</button>
+  </div>`;
+}
+
+function copyAllDetails(btn) {
+  let raw = decodeURIComponent(btn.dataset.d);
+  let d = JSON.parse(raw);
+  let lines = ['=== Detail Akun VPN ==='];
+  lines.push('Username: ' + (d.username||''));
+  if(d.tipe) lines.push('Tipe: ' + d.tipe.toUpperCase());
+  if(d.is_trial) lines.push('(Trial)');
+  if(d.uuid) lines.push('UUID: ' + d.uuid);
+  if(d.password) lines.push('Password: ' + d.password);
+  if(d.server) lines.push('Server: ' + d.server);
+  lines.push('Masa Aktif: ' + (d.expired||d.masa_aktif||''));
+  if(d.status) lines.push('Status: ' + d.status);
+  lines.push('');
+  lines.push('--- Config Links ---');
+  if(d.link_tls) lines.push('[TLS] ' + d.link_tls);
+  if(d.link_nontls) lines.push('[NonTLS] ' + d.link_nontls);
+  if(d.link_grpc) lines.push('[gRPC] ' + d.link_grpc);
+  const txt = lines.join('\n');
+  navigator.clipboard?.writeText(txt).then(() => {
+    btn.innerHTML = SVG.check + ' Tersalin!';
+    setTimeout(() => { btn.innerHTML = SVG.copy + ' Salin Semua Detail'; }, 2000);
+  });
+}
+
+function showAkunDetail(a) {
+  let d = {
+    username: a.username,
+    tipe: a.tipe,
+    is_trial: a.is_trial,
+    uuid: a.uuid,
+    password: a.password_vpn,
+    server: a.nama_server,
+    masa_aktif: a.masa_aktif,
+    status: a.status,
+    link_tls: a.link_tls,
+    link_nontls: a.link_nontls,
+    link_grpc: a.link_grpc
+  };
+  document.getElementById('akunDetailContent').innerHTML = buildDetailHTML(d, false);
+  document.querySelector('#modalAkun .modal-title').innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px;margin-right:6px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>Detail Akun VPN';
+  showModal('modalAkun');
+}
+
+function confirmDelete(id,name,type){deleteAkunId=id;deleteAkunType=type;document.getElementById('deleteUsername').textContent=name;showModal('modalDelete');}
+function doDelete(){
+  if(!deleteAkunId) return;
+  document.getElementById('deleteBtn').innerHTML='<span class="loading"></span>';
+  fetch('/api/delete_account.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'akun_id='+deleteAkunId})
+  .then(r=>r.json()).then(res=>{
+    closeModal('modalDelete');
+    if(res.success){showAlert('pageAlert',SVG.ok+' Akun berhasil dihapus dari server!','success');setTimeout(()=>location.reload(),1500);}
+    else{showAlert('pageAlert',SVG.no+' '+escHtml(res.message),'error');}
+  }).catch(()=>{closeModal('modalDelete');});
+}
+
+function doTopup(){
+  const amount=document.getElementById('topupAmount').value;
+  const method=document.querySelector('.method-btn.active')?.dataset.method||'manual_transfer';
+  if(!amount||amount<5000){document.getElementById('topupResult').innerHTML='<div class="alert alert-error">Nominal minimal Rp 5.000</div>';return;}
+  const fd=new FormData();
+  fd.append('amount',amount); fd.append('payment_method',method);
+  const file=document.getElementById('buktiFile').files[0];
+  if(file) fd.append('bukti',file);
+  fetch('/api/topup.php',{method:'POST',body:fd})
+  .then(r=>r.json()).then(res=>{
+    document.getElementById('topupResult').innerHTML=res.success
+      ?'<div class="alert alert-success">'+SVG.ok+' '+escHtml(res.message)+'</div>'
+      :'<div class="alert alert-error">'+SVG.no+' '+escHtml(res.message)+'</div>';
+  });
+}
+
+function saveProfile(){
+  const email=document.getElementById('settingEmail').value;
+  const wa=document.getElementById('settingWa').value;
+  const pass=document.getElementById('settingPass').value;
+  const passC=document.getElementById('settingPassConfirm').value;
+  if(pass && pass!==passC){showAlert('settingAlert','Password tidak cocok!','error');return;}
+  const fd=new FormData();
+  fd.append('email',email); fd.append('whatsapp',wa);
+  if(pass) fd.append('password',pass);
+  fetch('/api/update_profile.php',{method:'POST',body:fd})
+  .then(r=>r.json()).then(res=>{
+    showAlert('settingAlert',res.success?SVG.ok+' Profil berhasil disimpan!':SVG.no+' '+escHtml(res.message),res.success?'success':'error');
+  });
+}
+
+function uploadAvatar(){
+  const file=document.getElementById('avatarFile').files[0];
+  if(!file){showAlert('settingAlert','Pilih file gambar dulu!','error');return;}
+  const fd=new FormData(); fd.append('avatar',file);
+  fetch('/api/upload_avatar.php',{method:'POST',body:fd})
+  .then(r=>r.json()).then(res=>{
+    if(res.success){showAlert('settingAlert',SVG.ok+' Foto profil berhasil diupdate!','success');setTimeout(()=>location.reload(),1200);}
+    else{showAlert('settingAlert',SVG.no+' '+escHtml(res.message),'error');}
+  }).catch(()=>{showAlert('settingAlert','Gagal upload','error');});
+}
+
+function deleteAvatar(){
+  if(!confirm('Hapus foto profil?'))return;
+  fetch('/api/delete_avatar.php',{method:'POST'})
+  .then(r=>r.json()).then(res=>{
+    if(res.success){showAlert('settingAlert',SVG.ok+' Foto profil dihapus!','success');setTimeout(()=>location.reload(),1200);}
+    else{showAlert('settingAlert',SVG.no+' '+escHtml(res.message),'error');}
+  });
+}
+
+function showAlert(containerId,msg,type){
+  const el=document.getElementById(containerId);
+  if(el){el.innerHTML=`<div class="alert alert-${type}">${msg}</div>`;setTimeout(()=>{el.innerHTML=''},5000);}
+}
+function copyText(text,el){
+  const decoded=decodeURIComponent(text);
+  navigator.clipboard?.writeText(decoded).then(()=>{
+    const orig=el.innerHTML; el.innerHTML=SVG.check+' Tersalin!'; setTimeout(()=>{el.innerHTML=orig},1500);
+  }).catch(()=>{});
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 </script>
+
+
 </body>
 </html>

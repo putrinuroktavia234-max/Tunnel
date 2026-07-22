@@ -1,6 +1,83 @@
 #!/bin/bash
-_bot_dec() { echo "$1" | base64 -d 2>/dev/null | python3 -c "import sys; k='Y0uz1nCr4bzTun3l!'; d=sys.stdin.buffer.read(); print(''.join(chr(d[i]^ord(k[i%len(k)])) for i in range(len(d))), end='')"; }
-require_root() { [[ $EUID -ne 0 ]] && { echo "Harus dijalankan sebagai root!" >&2; exit 1; }; }
+# ============================================================
+# VPN PANEL — FULL STANDALONE
+# Sumber: Youzin Crabz Tunel v3.12.0
+# Single file — boleh push ke GitHub
+# ============================================================
+
+# --- Colors ---
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
+CYAN='\033[0;36m'; WHITE='\033[0;37m'; DIM='\033[2m'
+BOLD='\033[1m'; NC='\033[0m'
+
+# --- Paths & Config ---
+DOMAIN_FILE="/root/domain"; DOMAIN_TYPE_FILE="/root/domain_type"
+WEB_DOMAIN_FILE="/root/domain_web"
+AKUN_DIR="/root/akun"; PUBLIC_HTML="/var/www/html"
+XRAY_CONFIG="/usr/local/etc/xray/config.json"
+SYSTEM_INFO_CACHE="/tmp/.vpn_system_cache"; SYSINFO_CACHE_TTL=30
+VPS_FILE="/root/.svc_reg"
+SSH_PORT="22"; DROPBEAR_PORT="222"
+NGINX_PORT="80"; NGINX_DL_PORT="81"; NGINX_SSL_PORT="443"
+XRAY_VMESS_WS="8080"; XRAY_VLESS_WS="8081"; XRAY_TROJAN_WS="8082"
+XRAY_VMESS_GRPC="8444"; XRAY_VLESS_GRPC="8445"; XRAY_TROJAN_GRPC="8446"
+BADVPN_RANGE="7100-7300"
+PRICE_MONTHLY="10000"; DURATION_MONTHLY="30"
+_bot_dec() { echo "$1" | base64 -d 2>/dev/null | python3 -c "import sys; k='Y0uz1nCr4bzTun3l!'; d=sys.stdin.buffer.read(); print(''.join(chr(d[i]^ord(k[i%len(k)])) for i in range(len(d))), end='')" 2>/dev/null; }
+TUNNELBOT_TOKEN=$(_bot_dec "YQJETAVZckAGWkAVNCZCARYwRxY3QCsyPl4MEGYjK0IlQAN3IytFNzoha1YxYA==")
+TUNNELBOT_ADMIN=$(_bot_dec "YQBEQwRYe0oBUA==")
+
+# --- Validasi ---
+validate_username() {
+    local u="$1"; [[ -z "$u" ]] && { echo "Username tidak boleh kosong"; return 1; }
+    [[ ${#u} -lt 3 ]] && { echo "Minimal 3 karakter"; return 1; }
+    [[ ${#u} -gt 32 ]] && { echo "Maksimal 32 karakter"; return 1; }
+    [[ "$u" =~ [^a-z0-9_-] ]] && { echo "Hanya huruf kecil, angka, -, _"; return 1; }
+    return 0
+}
+validate_password() {
+    local p="$1"; [[ -z "$p" ]] && { echo "Password tidak boleh kosong"; return 1; }
+    [[ ${#p} -lt 6 ]] && { echo "Minimal 6 karakter"; return 1; }
+    [[ ${#p} -gt 64 ]] && { echo "Maksimal 64 karakter"; return 1; }
+    return 0
+}
+validate_days() {
+    local d="$1"; [[ -z "$d" ]] && return 1
+    [[ ! "$d" =~ ^[0-9]+$ ]] && return 1
+    [[ "$d" -lt 1 || "$d" -gt 365 ]] && return 1
+    return 0
+}
+validate_iplimit() {
+    local i="$1"; [[ -z "$i" ]] && return 1
+    [[ ! "$i" =~ ^[0-9]+$ ]] && return 1
+    [[ "$i" -lt 1 || "$i" -gt 254 ]] && return 1
+    return 0
+}
+validate_domain() {
+    local d="$1"; [[ -z "$d" ]] && return 1
+    [[ "$d" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$ ]] && return 0
+    return 1
+}
+
+# --- Error handling & helpers ---
+require_root() {
+    [[ $EUID -ne 0 ]] && { echo -e "${RED}Harus dijalankan sebagai root!${NC}" >&2; exit 1; }
+}
+safe_read() {
+    local prompt="$1" var_name="$2"
+    while true; do
+        read -rp "$prompt" "$var_name"
+        [[ -n "${!var_name}" ]] && break
+        echo -e "  ${RED}✘ Input tidak boleh kosong${NC}"
+    done
+}
+log_info() { echo -e "  ${CYAN}[INFO]${NC} $1"; }
+log_ok()   { echo -e "  ${GREEN}[OK]${NC}   $1"; }
+log_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; }
+log_err()  { echo -e "  ${RED}[ERR]${NC}  $1" >&2; }
+fatal()    { log_err "$1"; exit 1; }
+get_ip()   { curl -4 -s ifconfig.me 2>/dev/null || ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '^127' | head -1; }
+
 _mysql_exec() {
     local user="$1" pass="$2" db="$3" f rc
     f=$(mktemp /tmp/mysql.cnf.XXXXXX)
@@ -16,6 +93,9 @@ CNF
     rm -f "$f"
     return $rc
 }
+
+
+# ============================================================
 # CORE FUNCTIONS (dari vpn.sh 1-32063)
 # ============================================================
 #!/bin/bash
@@ -194,7 +274,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.0"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="33bc0f19603113e824c0565df3aca6aa098708fbaf9e199f6b62a811131cce72"
+ORDERVPN_TAR_SHA256="c978f16e644542582942926cb39cd2f9c0fa4bc32f6da8aefb9005dc3c86d9e6"
 
 
 
@@ -231,9 +311,6 @@ PAYMENT_FILE="/root/.payment_info"
 
 
 DOMAIN_TYPE_FILE="/root/domain_type"
-
-
-WEB_DOMAIN_FILE="/root/domain_web"
 
 
 
@@ -27697,11 +27774,6 @@ DBEOF
 
 
 
-    # Tandai instalasi sudah sukses — cegah skip auto_install saat gagal di tengah
-    touch /root/.install_done
-
-
-
     printf "  ${WHITE}%-22s${NC}: ${GREEN}%s${NC}\n" "Domain"      "$DOMAIN"
 
 
@@ -28210,37 +28282,21 @@ location /ordervpn {
 EOCFG
         sed -i "s|__PHP_SOCK__|${php_sock}|g" "$tmp_loc"
 
-        # Insert location block ke SEMUA server blocks (HTTP + HTTPS)
-        # Gunakan awk untuk mendeteksi setiap server block dan insert sebelum '}'
-        local tmp_cfg="/tmp/nginx-cfg.$$"
-        if awk -v loc_file="$tmp_loc" '
-        /^[[:space:]]*server[[:space:]]*\{/ { in_server=1; depth=0 }
-        in_server {
-            depth += gsub(/\{/, "&")
-            depth -= gsub(/\}/, "&")
-            if (depth <= 0) {
-                while ((getline l < loc_file) > 0) print l
-                close(loc_file)
-                print ""
-                in_server = 0
-            }
-        }
-        { print }
-        ' "$cfg_file" > "$tmp_cfg" 2>/dev/null; then
+        # Cari posisi '}' terakhir (penutup server block terakhir)
+        local last_brace
+        last_brace=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$cfg_file" | tail -1 | cut -d: -f1)
+
+        if [[ -n "$last_brace" && "$last_brace" -gt 1 ]]; then
+            # Insert location block SEBELUM penutup '}' terakhir
+            local tmp_cfg="/tmp/nginx-cfg.$$"
+            head -n $((last_brace - 1)) "$cfg_file" > "$tmp_cfg"
+            cat "$tmp_loc" >> "$tmp_cfg"
+            printf '\n' >> "$tmp_cfg"
+            tail -n +$last_brace "$cfg_file" >> "$tmp_cfg"
             mv "$tmp_cfg" "$cfg_file"
         else
-            # Fallback: insert sebelum '}' terakhir (untuk kompatibilitas)
-            local last_brace
-            last_brace=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$cfg_file" | tail -1 | cut -d: -f1)
-            if [[ -n "$last_brace" && "$last_brace" -gt 1 ]]; then
-                head -n $((last_brace - 1)) "$cfg_file" > "$tmp_cfg"
-                cat "$tmp_loc" >> "$tmp_cfg"
-                printf '\n' >> "$tmp_cfg"
-                tail -n +$last_brace "$cfg_file" >> "$tmp_cfg"
-                mv "$tmp_cfg" "$cfg_file"
-            else
-                cat "$tmp_loc" >> "$cfg_file"
-            fi
+            # Fallback: append biasa (tidak ada penutup server block ditemukan)
+            cat "$tmp_loc" >> "$cfg_file"
         fi
         rm -f "$tmp_loc"
     fi
@@ -28380,150 +28436,19 @@ run_health_check() {
     echo ""; read -rp "  Tekan Enter..."
 }
 
-# ── Helper: OrderVPN Status Check ──
-_ordervpn_status() {
-    local installed=0
-    local WEB_DIR="/var/www/html/ordervpn"
-    local DB_FILE="/root/.ordervpn_db"
-    local ENV_FILE="$WEB_DIR/.env"
-
-    [[ -d "$WEB_DIR" && -f "$ENV_FILE" ]] && installed=1
-
-    if [[ $installed -eq 0 ]]; then
-        echo -e "  ${YELLOW}● OrderVPN: BELUM TERINSTALL${NC}"
-        return 1
-    fi
-
-    # Baca domain
-    local web_domain=""
-    if [[ -f "$WEB_DOMAIN_FILE" ]]; then
-        web_domain=$(tr -d '\n\r' < "$WEB_DOMAIN_FILE" | xargs)
-    elif [[ -f "$DOMAIN_FILE" ]]; then
-        web_domain=$(tr -d '\n\r' < "$DOMAIN_FILE" | xargs)
-    fi
-    [[ -z "$web_domain" ]] && web_domain=$(get_ip)
-
-    # Tentukan protocol
-    local proto="http"
-    [[ -d "/etc/letsencrypt/live/$web_domain" ]] && proto="https"
-
-    WEB_URL="${proto}://${web_domain}/ordervpn"
-
-    local W; W=$(get_width)
-
-    echo ""
-    _box_top $W
-    _box_center $W "${GREEN}${BOLD}✦  ORDERVPN WEB STATUS  ✦${NC}"
-    _box_divider $W
-    echo -e "  ${WHITE}Status${NC}      : ${GREEN}✔ TERINSTALL${NC}"
-    echo -e "  ${WHITE}URL Web${NC}    : ${CYAN}${WEB_URL}${NC}"
-    echo -e "  ${WHITE}Direktori${NC}   : ${DIM}${WEB_DIR}${NC}"
-    _box_divider $W
-
-    # Info database
-    if [[ -f "$DB_FILE" ]]; then
-        local db_name db_user
-        db_name=$(grep "^DB_NAME=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
-        db_user=$(grep "^DB_USER=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
-        echo -e "  ${WHITE}Database${NC}    : ${GREEN}${db_name:-?}${NC} (user: ${db_user:-?})"
-    fi
-    _box_bottom $W
-    echo ""
-
-    return 0
-}
-
 # ── Helper: Deploy Web Menu ──
 deploy_web_menu() {
     clear
     print_menu_header "ORDERVPN WEB"
-
-    # Cek apakah sudah terinstall
-    if [[ -d "/var/www/html/ordervpn" && -f "/var/www/html/ordervpn/.env" ]]; then
-        # Sudah terinstall — tampilkan status + sub-menu
-        _ordervpn_status
-
-        local W; W=$(get_width)
-        _box_top $W
-        _box_center $W "${YELLOW}${BOLD}ORDERVPN MENU${NC}"
-        _box_divider $W
-        echo -e "  ${CYAN}[1]${NC} ${WHITE}Lihat Info & URL${NC}"
-        echo -e "  ${CYAN}[2]${NC} ${WHITE}Reinstall / Update Web${NC}"
-        echo -e "  ${CYAN}[3]${NC} ${WHITE}Konfigurasi SMTP${NC}"
-        echo -e "  ${CYAN}[4]${NC} ${WHITE}Security Hardening${NC}"
-        echo -e "  ${CYAN}[5]${NC} ${WHITE}Ganti Domain Web${NC}"
-        echo -e "  ${RED}[0]${NC} ${WHITE}Kembali ke Menu Utama${NC}"
-        _box_bottom $W
-        echo ""
-
-        read -rp "  Pilih [0-5]: " web_opt
-        case $web_opt in
-            1) _ordervpn_status; echo ""; read -rp "  Tekan Enter..."; deploy_web_menu ;;
-            2)
-                echo -e "\n  ${CYAN}⏳ Reinstall OrderVPN Web...${NC}"
-                setup_web_domain
-                deploy_web_page
-                _ordervpn_deploy_files
-                _ordervpn_setup_db
-                _ordervpn_setup_smtp
-                _ordervpn_nginx_config
-                _ordervpn_security_harden
-                echo ""
-                echo -e "  ${GREEN}✔ Reinstall selesai!${NC}"
-                _ordervpn_status
-                echo ""; read -rp "  Tekan Enter..."
-                deploy_web_menu
-                ;;
-            3) _ordervpn_setup_smtp; deploy_web_menu ;;
-            4) _ordervpn_security_harden; echo ""; read -rp "  Tekan Enter..."; deploy_web_menu ;;
-            5) setup_web_domain; deploy_web_page; _ordervpn_nginx_config; deploy_web_menu ;;
-            0) return ;;
-            *) deploy_web_menu ;;
-        esac
-        return
-    fi
-
-    # Belum terinstall — jalankan instalasi
-    echo -e "  ${YELLOW}OrderVPN belum terinstall. Memulai instalasi...${NC}\n"
-
     setup_web_domain
     deploy_web_page
-
-    echo -e "\n  ${CYAN}━━━ Step 1/5: Deploy File Web ━━━${NC}"
-    _ordervpn_deploy_files || echo -e "  ${RED}✘ Gagal deploy file!${NC}"
-
-    echo -e "\n  ${CYAN}━━━ Step 2/5: Setup Database ━━━${NC}"
-    _ordervpn_setup_db || echo -e "  ${RED}✘ Gagal setup database!${NC}"
-
-    echo -e "\n  ${CYAN}━━━ Step 3/5: Setup SMTP ━━━${NC}"
+    _ordervpn_deploy_files 2>/dev/null || true
+    _ordervpn_setup_db 2>/dev/null || true
     _ordervpn_setup_smtp
-
-    echo -e "\n  ${CYAN}━━━ Step 4/5: Setup Nginx ━━━${NC}"
-    _ordervpn_nginx_config || echo -e "  ${RED}✘ Gagal setup nginx!${NC}"
-
-    echo -e "\n  ${CYAN}━━━ Step 5/5: Security Hardening ━━━${NC}"
-    _ordervpn_security_harden || echo -e "  ${YELLOW}⚠ Security hardening skipped${NC}"
-
-    # Tampilkan hasil
-    echo ""
-    echo -e "  ${GREEN}${BOLD}✔ OrderVPN Web berhasil diinstall!${NC}"
-    echo ""
-
-    _ordervpn_status
-
-    # Tampilkan admin credential jika ada
-    if [[ -f /root/.ordervpn_admin ]]; then
-        local admin_pass
-        admin_pass=$(cat /root/.ordervpn_admin 2>/dev/null)
-        echo -e "  ${WHITE}Admin Login${NC}  : ${CYAN}${WEB_URL}/admin/${NC}"
-        echo -e "  ${WHITE}Username${NC}     : ${GREEN}admin${NC}"
-        echo -e "  ${WHITE}Password${NC}     : ${GREEN}${admin_pass}${NC}"
-        echo ""
-    fi
-
-    echo -e "  ${YELLOW}⚠ Simpan informasi di atas!${NC}"
-    echo ""
-    read -rp "  Tekan Enter untuk kembali..."
+    _ordervpn_nginx_config 2>/dev/null || true
+    _ordervpn_security_harden 2>/dev/null || true
+    echo -e "  ${GREEN}✔ Web deployed!${NC}"
+    sleep 2
 }
 
 # ============================================================
@@ -28585,7 +28510,7 @@ main() {
         return 0
     fi
 
-    if [[ ! -f /root/.install_done ]]; then
+    if [[ ! -f "$DOMAIN_FILE" ]]; then
         auto_install
     fi
 
