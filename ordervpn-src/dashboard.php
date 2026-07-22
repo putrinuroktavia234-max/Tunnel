@@ -178,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ip_limit = 2;
                     $expiry   = date('Y-m-d H:i:s', strtotime("+{$days} days"));
                     $db->prepare("INSERT INTO vpn_accounts (user_id, server_id, username, password, protocol, ip_limit, expiry_date, status, created_at) VALUES (?,?,?,?,?,?,?, 'active', NOW())")
-                       ->execute([$uid, $server_id, $username, $password, $protocol, $ip_limit, $expiry, $ip_limit, $expiry]);
+                       ->execute([$uid, $server_id, $username, $password, $protocol, $ip_limit, $expiry]);
                     $acc_id = (int)$db->lastInsertId();
                     $db->prepare("UPDATE users SET saldo = saldo - ? WHERE id=?")->execute([$finalPrice, $uid]);
                     $db->prepare("INSERT INTO transactions (user_id, server_id, account_id, type, amount, status, created_at) VALUES (?,?,?,?,?, 'success', NOW())")
