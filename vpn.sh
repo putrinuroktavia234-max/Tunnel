@@ -61,7 +61,7 @@ validate_domain() {
 
 # --- Error handling & helpers ---
 require_root() {
-    [[ $EUID -ne 0 ]] && { echo -e "${RED}Run as root!${NC}"; exit 1; }
+    [[ $EUID -ne 0 ]] && { echo -e "${RED}Harus dijalankan sebagai root!${NC}" >&2; exit 1; }
 }
 safe_read() {
     local prompt="$1" var_name="$2"
@@ -76,7 +76,6 @@ log_ok()   { echo -e "  ${GREEN}[OK]${NC}   $1"; }
 log_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; }
 log_err()  { echo -e "  ${RED}[ERR]${NC}  $1" >&2; }
 fatal()    { log_err "$1"; exit 1; }
-get_ip()   { curl -4 -s ifconfig.me 2>/dev/null || ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '^127' | head -1; }
 get_ip()   { curl -4 -s ifconfig.me 2>/dev/null || ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '^127' | head -1; }
 
 _mysql_exec() {
@@ -263,7 +262,8 @@ TRAFFIC_DIR="/root/traffic"
 
 
 
-XRAY_LOCK_FILE="/root/.xray_config.lock"SCRIPT_VERSION="3.12.0"
+XRAY_LOCK_FILE="/root/.xray_config.lock"
+SCRIPT_VERSION="3.12.0"
 SCRIPT_AUTHOR="The Professor"
 GITHUB_USER="putrinuroktavia234-max"
 GITHUB_REPO="Tunnel"
@@ -28501,5 +28501,7 @@ main() {
         exec bash --login
     fi
 }
+
+require_root
 
 main "$@"
