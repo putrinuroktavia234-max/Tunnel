@@ -22,7 +22,7 @@ $totalTopup = $db->prepare("SELECT COALESCE(SUM(amount),0) FROM transactions WHE
 $totalTopup->execute([$userId]); $totalTopup = $totalTopup->fetchColumn();
 
 // Akun aktif terbaru
-$akuns = $db->prepare("SELECT va.*, s.name AS nama_server, s.region AS lokasi, s.flag FROM vpn_accounts va 
+$akuns = $db->prepare("SELECT va.*, s.nama_server, s.lokasi, s.flag FROM vpn_accounts va 
     JOIN servers s ON va.server_id=s.id 
     WHERE va.user_id=? AND va.status='active' ORDER BY va.created_at DESC LIMIT 5");
 $akuns->execute([$userId]); $akuns = $akuns->fetchAll();
@@ -32,7 +32,7 @@ $trxs = $db->prepare("SELECT * FROM transactions WHERE user_id=? ORDER BY create
 $trxs->execute([$userId]); $trxs = $trxs->fetchAll();
 
 // Servers untuk order
-$servers = $db->query("SELECT * FROM servers WHERE status='ready' ORDER BY name")->fetchAll();
+$servers = $db->query("SELECT * FROM servers WHERE status='ready' ORDER BY nama_server")->fetchAll();
 
 $appName = getSetting('app_name','OrderVPN');
 $appLogo = getSetting('app_logo','[SIG]');
@@ -274,7 +274,7 @@ $wcDomains = $db->query("SELECT * FROM wildcard_domains ORDER BY domain ASC")->f
         <div class="card-header"><div class="card-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-4px;margin-right:6px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Semua Akun VPN</div></div>
         <div class="card-body" id="akunList">
           <?php
-          $allAkuns = $db->prepare("SELECT va.*, s.name AS nama_server, s.flag, s.region AS lokasi FROM vpn_accounts va JOIN servers s ON va.server_id=s.id WHERE va.user_id=? ORDER BY va.status ASC, va.masa_aktif ASC");
+          $allAkuns = $db->prepare("SELECT va.*, s.nama_server, s.flag, s.lokasi FROM vpn_accounts va JOIN servers s ON va.server_id=s.id WHERE va.user_id=? ORDER BY va.status ASC, va.masa_aktif ASC");
           $allAkuns->execute([$userId]); $allAkuns=$allAkuns->fetchAll();
           if(empty($allAkuns)):?><div class="empty-state"><div class="icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div><p>Belum ada akun</p></div>
           <?php else: foreach($allAkuns as $a):
