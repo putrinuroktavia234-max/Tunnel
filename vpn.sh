@@ -192,7 +192,7 @@ SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GI
 VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}/version"
 
 # OrderVPN Web Release (auto-updated by build.sh)
-ORDERVPN_VERSION="3.12.0"
+ORDERVPN_VERSION="3.12.1"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
 ORDERVPN_TAR_SHA256="33bc0f19603113e824c0565df3aca6aa098708fbaf9e199f6b62a811131cce72"
 
