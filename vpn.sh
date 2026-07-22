@@ -1,83 +1,6 @@
 #!/bin/bash
-# ============================================================
-# VPN PANEL — FULL STANDALONE
-# Sumber: Youzin Crabz Tunel v3.12.0
-# Single file — boleh push ke GitHub
-# ============================================================
-
-# --- Colors ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
-CYAN='\033[0;36m'; WHITE='\033[0;37m'; DIM='\033[2m'
-BOLD='\033[1m'; NC='\033[0m'
-
-# --- Paths & Config ---
-DOMAIN_FILE="/root/domain"; DOMAIN_TYPE_FILE="/root/domain_type"
-WEB_DOMAIN_FILE="/root/domain_web"
-AKUN_DIR="/root/akun"; PUBLIC_HTML="/var/www/html"
-XRAY_CONFIG="/usr/local/etc/xray/config.json"
-SYSTEM_INFO_CACHE="/tmp/.vpn_system_cache"; SYSINFO_CACHE_TTL=30
-VPS_FILE="/root/.svc_reg"
-SSH_PORT="22"; DROPBEAR_PORT="222"
-NGINX_PORT="80"; NGINX_DL_PORT="81"; NGINX_SSL_PORT="443"
-XRAY_VMESS_WS="8080"; XRAY_VLESS_WS="8081"; XRAY_TROJAN_WS="8082"
-XRAY_VMESS_GRPC="8444"; XRAY_VLESS_GRPC="8445"; XRAY_TROJAN_GRPC="8446"
-BADVPN_RANGE="7100-7300"
-PRICE_MONTHLY="10000"; DURATION_MONTHLY="30"
-_bot_dec() { echo "$1" | base64 -d 2>/dev/null | python3 -c "import sys; k='Y0uz1nCr4bzTun3l!'; d=sys.stdin.buffer.read(); print(''.join(chr(d[i]^ord(k[i%len(k)])) for i in range(len(d))), end='')" 2>/dev/null; }
-TUNNELBOT_TOKEN=$(_bot_dec "YQJETAVZckAGWkAVNCZCARYwRxY3QCsyPl4MEGYjK0IlQAN3IytFNzoha1YxYA==")
-TUNNELBOT_ADMIN=$(_bot_dec "YQBEQwRYe0oBUA==")
-
-# --- Validasi ---
-validate_username() {
-    local u="$1"; [[ -z "$u" ]] && { echo "Username tidak boleh kosong"; return 1; }
-    [[ ${#u} -lt 3 ]] && { echo "Minimal 3 karakter"; return 1; }
-    [[ ${#u} -gt 32 ]] && { echo "Maksimal 32 karakter"; return 1; }
-    [[ "$u" =~ [^a-z0-9_-] ]] && { echo "Hanya huruf kecil, angka, -, _"; return 1; }
-    return 0
-}
-validate_password() {
-    local p="$1"; [[ -z "$p" ]] && { echo "Password tidak boleh kosong"; return 1; }
-    [[ ${#p} -lt 6 ]] && { echo "Minimal 6 karakter"; return 1; }
-    [[ ${#p} -gt 64 ]] && { echo "Maksimal 64 karakter"; return 1; }
-    return 0
-}
-validate_days() {
-    local d="$1"; [[ -z "$d" ]] && return 1
-    [[ ! "$d" =~ ^[0-9]+$ ]] && return 1
-    [[ "$d" -lt 1 || "$d" -gt 365 ]] && return 1
-    return 0
-}
-validate_iplimit() {
-    local i="$1"; [[ -z "$i" ]] && return 1
-    [[ ! "$i" =~ ^[0-9]+$ ]] && return 1
-    [[ "$i" -lt 1 || "$i" -gt 254 ]] && return 1
-    return 0
-}
-validate_domain() {
-    local d="$1"; [[ -z "$d" ]] && return 1
-    [[ "$d" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$ ]] && return 0
-    return 1
-}
-
-# --- Error handling & helpers ---
-require_root() {
-    [[ $EUID -ne 0 ]] && { echo -e "${RED}Harus dijalankan sebagai root!${NC}" >&2; exit 1; }
-}
-safe_read() {
-    local prompt="$1" var_name="$2"
-    while true; do
-        read -rp "$prompt" "$var_name"
-        [[ -n "${!var_name}" ]] && break
-        echo -e "  ${RED}✘ Input tidak boleh kosong${NC}"
-    done
-}
-log_info() { echo -e "  ${CYAN}[INFO]${NC} $1"; }
-log_ok()   { echo -e "  ${GREEN}[OK]${NC}   $1"; }
-log_warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; }
-log_err()  { echo -e "  ${RED}[ERR]${NC}  $1" >&2; }
-fatal()    { log_err "$1"; exit 1; }
-get_ip()   { curl -4 -s ifconfig.me 2>/dev/null || ip -4 addr show | grep -oP 'inet \K[\d.]+' | grep -v '^127' | head -1; }
-
+_bot_dec() { echo "$1" | base64 -d 2>/dev/null | python3 -c "import sys; k='Y0uz1nCr4bzTun3l!'; d=sys.stdin.buffer.read(); print(''.join(chr(d[i]^ord(k[i%len(k)])) for i in range(len(d))), end='')"; }
+require_root() { [[ $EUID -ne 0 ]] && { echo "Harus dijalankan sebagai root!" >&2; exit 1; }; }
 _mysql_exec() {
     local user="$1" pass="$2" db="$3" f rc
     f=$(mktemp /tmp/mysql.cnf.XXXXXX)
@@ -93,9 +16,6 @@ CNF
     rm -f "$f"
     return $rc
 }
-
-
-# ============================================================
 # CORE FUNCTIONS (dari vpn.sh 1-32063)
 # ============================================================
 #!/bin/bash
@@ -27774,6 +27694,11 @@ DBEOF
 
 
 
+    # Tandai instalasi sudah sukses — cegah skip auto_install saat gagal di tengah
+    touch /root/.install_done
+
+
+
     printf "  ${WHITE}%-22s${NC}: ${GREEN}%s${NC}\n" "Domain"      "$DOMAIN"
 
 
@@ -28490,7 +28415,7 @@ main() {
         return 0
     fi
 
-    if [[ ! -f "$DOMAIN_FILE" ]]; then
+    if [[ ! -f /root/.install_done ]]; then
         auto_install
     fi
 
