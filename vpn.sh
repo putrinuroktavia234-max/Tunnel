@@ -28186,7 +28186,9 @@ _ordervpn_nginx_config() {
     fi
 
     if ! grep -q "# OrderVPN location start" "$cfg_file" 2>/dev/null; then
-        cat >> "$cfg_file" <<"EOCFG"
+        # Buat file temporary untuk location block
+        local tmp_loc="/tmp/ordervpn-loc.$$"
+        cat > "$tmp_loc" <<"EOCFG"
 
 # OrderVPN location start
 location /ordervpn {
@@ -28206,7 +28208,41 @@ location /ordervpn {
     }
 }
 EOCFG
-        sed -i "s|__PHP_SOCK__|${php_sock}|g" "$cfg_file"
+        sed -i "s|__PHP_SOCK__|${php_sock}|g" "$tmp_loc"
+
+        # Insert location block ke SEMUA server blocks (HTTP + HTTPS)
+        # Gunakan awk untuk mendeteksi setiap server block dan insert sebelum '}'
+        local tmp_cfg="/tmp/nginx-cfg.$$"
+        if awk -v loc_file="$tmp_loc" '
+        /^[[:space:]]*server[[:space:]]*\{/ { in_server=1; depth=0 }
+        in_server {
+            depth += gsub(/\{/, "&")
+            depth -= gsub(/\}/, "&")
+            if (depth <= 0) {
+                while ((getline l < loc_file) > 0) print l
+                close(loc_file)
+                print ""
+                in_server = 0
+            }
+        }
+        { print }
+        ' "$cfg_file" > "$tmp_cfg" 2>/dev/null; then
+            mv "$tmp_cfg" "$cfg_file"
+        else
+            # Fallback: insert sebelum '}' terakhir (untuk kompatibilitas)
+            local last_brace
+            last_brace=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$cfg_file" | tail -1 | cut -d: -f1)
+            if [[ -n "$last_brace" && "$last_brace" -gt 1 ]]; then
+                head -n $((last_brace - 1)) "$cfg_file" > "$tmp_cfg"
+                cat "$tmp_loc" >> "$tmp_cfg"
+                printf '\n' >> "$tmp_cfg"
+                tail -n +$last_brace "$cfg_file" >> "$tmp_cfg"
+                mv "$tmp_cfg" "$cfg_file"
+            else
+                cat "$tmp_loc" >> "$cfg_file"
+            fi
+        fi
+        rm -f "$tmp_loc"
     fi
 
     nginx -t && systemctl restart nginx
