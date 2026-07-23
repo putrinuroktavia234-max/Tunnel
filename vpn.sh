@@ -19669,11 +19669,12 @@ _uninstall_all() {
     echo -e "  ${CYAN}[5/8]${NC} Menghapus semua data..."
     rm -rf /usr/local/etc/xray /var/log/xray /etc/xray \
            /root/akun /root/bot /root/orders \
-           /root/domain /root/.domain_type /root/.bot_token /root/.chat_id \
+           /root/domain /root/domain_type /root/domain_web /root/.bot_token /root/.chat_id \
            /root/.payment_info /root/.ordervpn_db /root/.ordervpn_admin \
+           /root/.ip_vps /root/.sysinfo_cache /root/.xray_config.lock /root/.ddos_rules /root/traffic \
            /root/.install_done /root/vpn.sh.bak "$TUNNELBOT_DIR" /root/.svc_reg /root/.svc_mid \
            /root/backups /root/.config/rclone /root/.rclone.conf \
-           /var/www/ordervpn /ordervpn /usr/share/nginx/ordervpn \
+           /var/www/ordervpn /var/www/html/ordervpn /ordervpn /usr/share/nginx/ordervpn \
            /etc/nginx/sites-available/ordervpn /etc/nginx/sites-enabled/ordervpn \
            /etc/nginx/sites-available/ordervpn-domain /etc/nginx/sites-enabled/ordervpn-domain \
            /etc/nginx/conf.d/ordervpn.conf \
@@ -19686,9 +19687,13 @@ _uninstall_all() {
           /etc/systemd/system/vpn-keepalive.service \
           /etc/systemd/system/vpn-bot.service \
           /etc/systemd/system/systemd-netlink.service \
+          /etc/systemd/system/xray.service.d/override.conf \
           /usr/local/bin/udp-custom /usr/local/bin/vpn-keepalive.sh \
           /usr/local/bin/vpn-api /usr/local/bin/install-remote.sh \
           /usr/local/bin/vpn-backup-auto /usr/local/bin/menu \
+          /usr/local/bin/ssl-auto-renew.sh /root/quick-test.sh \
+          /etc/sysctl.d/99-vpn.conf /etc/security/limits.d/99-vpn.conf \
+          /etc/systemd/journald.conf.d/no-wall.conf /etc/modules-load.d/bbr.conf \
           /root/vpn.sh
     echo -e "  ${GREEN}✔${NC} Done"
 
