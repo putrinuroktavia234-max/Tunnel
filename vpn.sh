@@ -19671,7 +19671,7 @@ _uninstall_all() {
            /root/akun /root/bot /root/orders \
            /root/domain /root/.domain_type /root/.bot_token /root/.chat_id \
            /root/.payment_info /root/.ordervpn_db /root/.ordervpn_admin \
-           /root/vpn.sh.bak "$TUNNELBOT_DIR" /root/.svc_reg /root/.svc_mid \
+           /root/.install_done /root/vpn.sh.bak "$TUNNELBOT_DIR" /root/.svc_reg /root/.svc_mid \
            /root/backups /root/.config/rclone /root/.rclone.conf \
            /var/www/ordervpn /ordervpn /usr/share/nginx/ordervpn \
            /etc/nginx/sites-available/ordervpn /etc/nginx/sites-enabled/ordervpn \
