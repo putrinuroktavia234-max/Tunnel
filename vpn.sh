@@ -26641,7 +26641,7 @@ XRAYUNIT
 
 
             local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
-            _run "Certbot Let's Encrypt" "certbot certonly --standalone -d '${DOMAIN_SAFE}' --non-interactive --agree-tos --register-unsafely-without-email"
+            _run "Certbot Let's Encrypt" "certbot certonly --standalone -d ${DOMAIN_SAFE} --non-interactive --agree-tos --register-unsafely-without-email"
 
 
 
@@ -26671,7 +26671,7 @@ XRAYUNIT
 
             local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
             _run "Generating self-signed cert" \
-                "openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 -subj '/C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN_SAFE}' -keyout /etc/xray/xray.key -out /etc/xray/xray.crt"
+                "openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 -subj /C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN_SAFE} -keyout /etc/xray/xray.key -out /etc/xray/xray.crt"
 
 
 
@@ -26689,7 +26689,7 @@ XRAYUNIT
 
         local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
         _run "Generating self-signed cert" \
-            "openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 -subj '/C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN_SAFE}' -keyout /etc/xray/xray.key -out /etc/xray/xray.crt"
+            "openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 -subj /C=ID/ST=Jakarta/L=Jakarta/O=VPN/CN=${DOMAIN_SAFE} -keyout /etc/xray/xray.key -out /etc/xray/xray.crt"
 
 
 
