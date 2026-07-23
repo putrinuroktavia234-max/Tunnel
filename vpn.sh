@@ -28457,9 +28457,32 @@ _ordervpn_status() {
     fi
 
     # Admin credentials
+    local admin_pass=""
     if [[ -f /root/.ordervpn_admin ]]; then
-        local admin_pass
         admin_pass=$(cat /root/.ordervpn_admin 2>/dev/null)
+    fi
+    if [[ -z "$admin_pass" ]]; then
+        # Auto-generate jika file belum ada (misal install dari versi lama)
+        admin_pass=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+        echo "$admin_pass" > /root/.ordervpn_admin
+        chmod 600 /root/.ordervpn_admin
+        # Update database jika memungkinkan
+        if [[ -f "$DB_FILE" ]]; then
+            local _dbu _dbp _dbn
+            _dbu=$(grep "^DB_USER=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
+            _dbp=$(grep "^DB_PASS=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
+            _dbn=$(grep "^DB_NAME=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
+            if [[ -n "$_dbu" && -n "$_dbp" && -n "$_dbn" ]]; then
+                local ADMIN_HASH
+                ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+                if [[ -n "$ADMIN_HASH" ]]; then
+                    local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
+                    _mysql_exec "$_dbu" "$_dbp" "$_dbn" -e "UPDATE users SET password='$ADMIN_HASH_ESC' WHERE username='admin';" 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+    if [[ -n "$admin_pass" ]]; then
         _box_divider $W
         echo -e "  ${WHITE}Admin Login${NC}  : ${CYAN}${WEB_URL}/admin/${NC}"
         echo -e "  ${WHITE}Username${NC}     : ${GREEN}admin${NC}"
