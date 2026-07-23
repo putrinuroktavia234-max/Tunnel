@@ -26635,13 +26635,22 @@ XRAYUNIT
         install_certbot_compat "custom"
 
 
-
         if command -v certbot >/dev/null 2>&1; then
 
 
-
             local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
+
+            # Stop nginx/haproxy dulu agar port 80 bebas untuk certbot standalone
+            systemctl stop nginx 2>/dev/null
+            systemctl stop haproxy 2>/dev/null
+            sleep 1
+
             _run "Certbot Let's Encrypt" "certbot certonly --standalone -d ${DOMAIN_SAFE} --non-interactive --agree-tos --register-unsafely-without-email"
+
+            # Restart service setelah certbot
+            systemctl start nginx 2>/dev/null || true
+            systemctl start haproxy 2>/dev/null || true
+
 
 
 
