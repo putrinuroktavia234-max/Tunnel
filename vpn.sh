@@ -26159,7 +26159,7 @@ auto_install() {
 
 
 
-        [[ $? -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-40s\n" "$pkg" || { printf "\r  ${RED}✘${NC}  %-40s\n" "$pkg (gagal)"; _install_failed=1; }
+        [[ $? -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-40s\n" "$pkg" || printf "\r  ${RED}✘${NC}  %-40s\n" "$pkg (gagal)"
 
 
 
@@ -26212,7 +26212,7 @@ auto_install() {
 
 
 
-        [[ $ret -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-45s\n" "$label" || { printf "\r  ${RED}✘${NC}  %-45s\n" "$label (gagal)"; _install_failed=1; }
+        [[ $ret -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-45s\n" "$label" || printf "\r  ${RED}✘${NC}  %-45s\n" "$label (gagal)"
 
 
 
