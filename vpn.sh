@@ -28642,6 +28642,14 @@ main() {
         return 0
     fi
 
+    # Auto-detect broken/incomplete install: jika .install_done ada tapi xray
+    # tidak terinstall, hapus flag agar auto_install berjalan ulang
+    if [[ -f /root/.install_done ]] && ! command -v xray &>/dev/null && [[ ! -f /usr/local/bin/xray ]]; then
+        rm -f /root/.install_done
+        echo -e "  ${YELLOW}[INFO]${NC} Install sebelumnya tidak lengkap — install ulang..."
+        sleep 2
+    fi
+
     if [[ ! -f /root/.install_done ]]; then
         if ! auto_install; then
             echo ""
