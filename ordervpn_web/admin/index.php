@@ -178,8 +178,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         }
         
         // Simpan ke database
-        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,domain,status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,'ready',this)")
+        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,ssh_key,domain,status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ready')")
            ->execute([
                $nama,
                $code,
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
     
 if ($act==='add_server') {
-        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,ssh_key,domain,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ready',this)")
+        $db->prepare("INSERT INTO servers (nama_server,code_server,lokasi,flag,harga_hari,harga_bulan,host,port,ssh_user,ssh_password,ssh_key,domain,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'ready')")
            ->execute([
                sanitize($_POST['nama_server']), sanitize($_POST['code_server']),
                sanitize($_POST['lokasi']), sanitize($_POST['flag']??'🇮🇩'),

@@ -15,6 +15,20 @@ $buktiPath = null;
 
 // Upload bukti
 if (!empty($_FILES['bukti']['tmp_name'])) {
+    // Validate MIME type
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = finfo_file($finfo, $_FILES['bukti']['tmp_name']);
+    finfo_close($finfo);
+    $allowedMimes = ['image/jpeg','image/png','image/gif','image/webp','application/pdf'];
+    if (!in_array($mime, $allowedMimes)) {
+        echo json_encode(['success'=>false,'message'=>'Format file tidak didukung. Gunakan JPG/PNG/GIF/WebP/PDF']);
+        exit;
+    }
+    // Max 5MB
+    if ($_FILES['bukti']['size'] > 5 * 1024 * 1024) {
+        echo json_encode(['success'=>false,'message'=>'Ukuran file maksimal 5MB']);
+        exit;
+    }
     $uploadDir = __DIR__.'/../uploads/bukti/';
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
     $ext = pathinfo($_FILES['bukti']['name'], PATHINFO_EXTENSION);

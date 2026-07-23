@@ -17,6 +17,22 @@ if (!in_array($ext, $allowed)) {
     exit;
 }
 
+// Validate MIME type
+$finfo = finfo_open(FILEINFO_MIME_TYPE);
+$mime = finfo_file($finfo, $_FILES['avatar']['tmp_name']);
+finfo_close($finfo);
+$allowedMimes = ['image/jpeg','image/png','image/gif','image/webp'];
+if (!in_array($mime, $allowedMimes)) {
+    echo json_encode(['success'=>false,'message'=>'Tipe file tidak valid']);
+    exit;
+}
+
+// Max 2MB
+if ($_FILES['avatar']['size'] > 2 * 1024 * 1024) {
+    echo json_encode(['success'=>false,'message'=>'Ukuran maksimal 2MB']);
+    exit;
+}
+
 $uploadDir = __DIR__.'/../uploads/avatars/';
 if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
