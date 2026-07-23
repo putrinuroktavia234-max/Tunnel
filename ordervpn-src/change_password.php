@@ -1,9 +1,8 @@
 <?php
-session_start();
 require_once __DIR__ . '/includes/config.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: admin/'); exit;
+    header('Location: /ordervpn/login.php'); exit;
 }
 
 $msg = ''; $msg_type = '';

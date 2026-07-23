@@ -44,7 +44,11 @@ $trialUsed = $db->prepare("SELECT COUNT(*) FROM vpn_accounts WHERE user_id=? AND
 $trialUsed->execute([$userId]); $trialUsed = (int)$trialUsed->fetchColumn();
 
 $showGithub = true;
-$wcDomains = $db->query("SELECT * FROM wildcard_domains ORDER BY domain ASC")->fetchAll();
+try {
+    $wcDomains = $db->query("SELECT * FROM wildcard_domains ORDER BY domain ASC")->fetchAll();
+} catch (Exception $e) {
+    $wcDomains = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">

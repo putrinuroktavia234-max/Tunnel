@@ -57,7 +57,8 @@ function getSetting($key, $default='') {
 }
 
 function sanitize($input) {
-    return trim($input);
+    if (is_array($input)) return array_map('sanitize', $input);
+    return strip_tags(trim($input));
 }
 
 function esc($str) {

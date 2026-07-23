@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $chk->execute([$u,$e]);
             if ($chk->fetch()) { $error='Username atau email sudah digunakan!'; }
             else {
-                $otp = str_pad(rand(0,999999),6,'0',STR_PAD_LEFT);
+                $otp = str_pad(random_int(0,999999),6,'0',STR_PAD_LEFT);
                 $otpExp = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $hash = password_hash($p, PASSWORD_BCRYPT);
     try {
@@ -107,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $st=$db->prepare("SELECT * FROM users WHERE email=? AND is_verified=0");
         $st->execute([$e]); $user=$st->fetch();
         if ($user) {
-            $otp=str_pad(rand(0,999999),6,'0',STR_PAD_LEFT);
+            $otp=str_pad(random_int(0,999999),6,'0',STR_PAD_LEFT);
             $otpExp=date('Y-m-d H:i:s',strtotime('+15 minutes'));
             $db->prepare("UPDATE users SET otp_code=?,otp_expires=? WHERE id=?")->execute([$otp,$otpExp,$user['id']]);
             $emailBody="<div style='font-family:sans-serif;padding:32px;background:#0f172a;color:#f1f5f9;border-radius:16px;'><h2 style='color:#60a5fa;'>Kode OTP Baru</h2><div style='font-size:40px;font-weight:800;letter-spacing:12px;color:#60a5fa;text-align:center;margin:24px 0;'>{$otp}</div><p style='color:#64748b;font-size:12px;'>Berlaku 15 min.</p></div>";
