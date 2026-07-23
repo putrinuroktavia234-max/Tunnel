@@ -10,7 +10,14 @@ if (empty($secret)) {
     exit;
 }
 
-$input = json_decode(file_get_contents('php://input'), true);
+// Limit input size to 16KB
+$rawInput = file_get_contents('php://input', false, null, 0, 16384);
+if (strlen($rawInput) > 16384) {
+    http_response_code(413);
+    echo json_encode(['success' => false, 'message' => 'Request too large']);
+    exit;
+}
+$input = json_decode($rawInput, true);
 if (!$input) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid JSON']);
