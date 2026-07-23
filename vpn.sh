@@ -25976,6 +25976,7 @@ WEBEOF
 
 auto_install() {
 
+    local _install_failed=0
 
 
     # Auto-copy script ke SCRIPT_PATH jika belum ada (biar menu command berfungsi)
@@ -26014,7 +26015,7 @@ auto_install() {
 
 
 
-    [[ -z "$DOMAIN" ]] && { echo -e "  ${RED}✘ Domain kosong!${NC}"; exit 1; }
+    [[ -z "$DOMAIN" ]] && { echo -e "  ${RED}✘ Domain kosong! Instalasi dibatalkan.${NC}"; return 1; }
 
 
 
@@ -26082,7 +26083,7 @@ auto_install() {
 
 
 
-    _fail() { printf "  ${RED}✘${NC}  %-45s\n" "$1"; }
+    _fail() { printf "  ${RED}✘${NC}  %-45s\n" "$1"; _install_failed=1; }
 
 
 
@@ -26158,7 +26159,7 @@ auto_install() {
 
 
 
-        [[ $? -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-40s\n" "$pkg" || printf "\r  ${RED}✘${NC}  %-40s\n" "$pkg (gagal)"
+        [[ $? -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-40s\n" "$pkg" || { printf "\r  ${RED}✘${NC}  %-40s\n" "$pkg (gagal)"; _install_failed=1; }
 
 
 
@@ -26211,7 +26212,7 @@ auto_install() {
 
 
 
-        [[ $ret -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-45s\n" "$label" || printf "\r  ${RED}✘${NC}  %-45s\n" "$label (gagal)"
+        [[ $ret -eq 0 ]] && printf "\r  ${GREEN}✔${NC}  %-45s\n" "$label" || { printf "\r  ${RED}✘${NC}  %-45s\n" "$label (gagal)"; _install_failed=1; }
 
 
 
@@ -27665,17 +27666,17 @@ DBEOF
 
 
 
-    [[ -n "$ip_vps" && "$ip_vps" != "N/A" ]] && echo "$ip_vps" > "$IP_CACHE_FILE"
+    [[ -n "$ip_vps" && "$ip_vps" != "N/A" ]] && echo "$ip_vps" > "$IP_CACHE_FILE"    echo ""
 
-
-
-
-
-
-
-    echo ""
-
-
+    # Check apakah ada critical failure sebelum tandai selesai
+    if [[ $_install_failed -ne 0 ]]; then
+        echo -e "${RED}  ╔══════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}  ║      ✘  INSTALASI GAGAL! Beberapa step error!    ║${NC}"
+        echo -e "${RED}  ║      Cek log: cat /tmp/install.log               ║${NC}"
+        echo -e "${RED}  ╚══════════════════════════════════════════════════╝${NC}"
+        echo ""
+        return 1
+    fi
 
     echo -e "${GREEN}  ╔══════════════════════════════════════════════════╗${NC}"
 
@@ -28604,7 +28605,17 @@ main() {
     fi
 
     if [[ ! -f /root/.install_done ]]; then
-        auto_install
+        if ! auto_install; then
+            echo ""
+            echo -e "  ${RED}╔══════════════════════════════════════════════════╗${NC}"
+            echo -e "  ${RED}║      ✘  INSTALASI GAGAL!                           ║${NC}"
+            echo -e "  ${RED}║      Cek log: cat /tmp/install.log                 ║${NC}"
+            echo -e "  ${RED}║      Perbaiki masalah, lalu jalankan ulang:        ║${NC}"
+            echo -e "  ${RED}║      rm -f /root/.install_done && ./vpn.sh         ║${NC}"
+            echo -e "  ${RED}╚══════════════════════════════════════════════════╝${NC}"
+            echo ""
+            return 1
+        fi
     fi
 
     setup_menu_command
