@@ -1,5 +1,26 @@
-ordervpn_web/.env
-ordervpn_web/includes/config.php.bak
+# Environment & config (jangan commit .env asli)
+ordervpn-src/.env
+ordervpn-src/includes/config.php.bak
+
+# Token & credential
 .github_token
-vpn.sh.bak
-ordervpn-src.tar.gz
+
+# File backup (*.bak, *.old, *.backup)
+*.bak
+*.old
+
+# Archive binary
+*.tar.gz
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
