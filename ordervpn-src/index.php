@@ -8,9 +8,9 @@ try {
     $db = getDB();
     $stats = [
         'member' => $db->query("SELECT COUNT(*) FROM users")->fetchColumn() ?: 0,
-        'tunnel' => $db->query("SELECT COUNT(*) FROM orders WHERE status='active'")->fetchColumn() ?: 0,
+        'tunnel' => $db->query("SELECT COUNT(*) FROM vpn_accounts WHERE status='active'")->fetchColumn() ?: 0,
         'server' => $db->query("SELECT COUNT(*) FROM servers WHERE status='active'")->fetchColumn() ?: 0,
-        'transaksi' => $db->query("SELECT COUNT(*) FROM orders")->fetchColumn() ?: 0,
+        'transaksi' => $db->query("SELECT COUNT(*) FROM vpn_accounts")->fetchColumn() ?: 0,
     ];
 } catch (Exception $e) {
     $stats = ['member'=>0,'tunnel'=>0,'server'=>0,'transaksi'=>0];
