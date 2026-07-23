@@ -26641,7 +26641,7 @@ XRAYUNIT
 
 
             local DOMAIN_SAFE="${DOMAIN//\'/\'\\\'}"
-            _run "Certbot Let's Encrypt" "certbot certonly --standalone -d '${DOMAIN_SAFE}' --non-interactive --agree-tos --register-unsafely-without-email --timeout 60"
+            _run "Certbot Let's Encrypt" "certbot certonly --standalone -d '${DOMAIN_SAFE}' --non-interactive --agree-tos --register-unsafely-without-email"
 
 
 
