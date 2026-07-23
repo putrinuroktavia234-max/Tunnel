@@ -28075,6 +28075,24 @@ DB_HOST=localhost
 EODB
     chmod 600 /root/.ordervpn_db
 
+    # Generate/update admin password
+    local admin_pass
+    if [[ -f /root/.ordervpn_admin ]]; then
+        admin_pass=$(cat /root/.ordervpn_admin 2>/dev/null)
+    fi
+    if [[ -z "$admin_pass" ]]; then
+        admin_pass=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+        echo "$admin_pass" > /root/.ordervpn_admin
+        chmod 600 /root/.ordervpn_admin
+    fi
+    local ADMIN_HASH
+    ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+    if [[ -n "$ADMIN_HASH" ]]; then
+        local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
+        _mysql_exec "$db_user" "$db_pass" "$db_name" -e "UPDATE users SET password='$ADMIN_HASH_ESC' WHERE username='admin';" 2>/dev/null || true
+        echo -e "  ${GREEN}  Admin: admin / ${admin_pass}${NC}"
+    fi
+
     echo -e "  ${GREEN}  Database OrderVPN ready${NC}"
 }
 
