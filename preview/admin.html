@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Overview · OrderVPN</title>
+<link rel="stylesheet" href="ordervpn.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+</head>
+<body>
+
+<!-- ====== NAV ====== -->
+<nav class="nav">
+  <div class="nav-brand" aria-label="OrderVPN home">
+    <span class="brand-mark" aria-hidden="true">OV</span>
+    <span class="name">OrderVPN</span>
+    <span class="ver orange">v3.12.1 · Admin</span>
+  </div>
+  <div class="nav-actions">
+    <a href="#" class="btn btn-sm btn-ghost">Dashboard</a>
+    <a href="#" class="btn btn-sm btn-danger">Logout</a>
+  </div>
+</nav>
+
+<div class="layout-with-side">
+
+  <!-- ====== SIDEBAR ====== -->
+  <aside class="sidebar">
+    <div class="sidebar-user">
+      <div class="role admin">Admin / Privileged</div>
+      <div class="who">theprof</div>
+      <div class="meta">Session ID #1 · Root Access</div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item active" href="#"><span class="icn">::</span>Overview</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">$$</span>Topup Approval<span class="badge warn">3</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">##</span>Users<span class="badge">2</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">&gt;&gt;</span>Servers<span class="badge danger">1 OFF</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">##</span>Transactions</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">%%</span>Promo Codes</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">~~</span>Settings</a>
+    </nav>
+    <div class="sidebar-block">
+      <div class="label">Server Status</div>
+      <div class="ln"><span><span class="led ok"></span> Ready</span><span class="num ok">4</span></div>
+      <div class="ln"><span><span class="led bad"></span> Off</span><span class="num bad">1</span></div>
+      <div class="ln" style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+        <span class="label" style="margin:0;">Total Nodes</span><span class="num">5</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ====== MAIN ====== -->
+  <main class="main">
+    <div class="main-head">
+      <div class="eyebrow">Admin / Home</div>
+      <h1>Admin Overview.</h1>
+      <p>Ringkasan sistem. Gunakan sidebar untuk approval topup, manajemen user, dan settings. Tiga notifikasi menunggu tindakan.</p>
+    </div>
+
+    <div class="section-stack">
+
+      <!-- Top Stats -->
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="label">Total Users</div>
+          <div class="val blue">147</div>
+          <div class="sub">2 belum verified</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Total Akun VPN</div>
+          <div class="val">312</div>
+          <div class="sub">Aktif + expired</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Total Revenue</div>
+          <div class="val orange">Rp 24.6jt</div>
+          <div class="sub">Topup + order sukses</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Pending Topup</div>
+          <div class="val orange">3</div>
+          <div class="sub">Menunggu approval</div>
+        </div>
+      </div>
+
+      <!-- Infrastructure Stats -->
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="label">Servers Ready</div>
+          <div class="val ok">4</div>
+          <div class="sub">Aktif untuk order</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Servers Off</div>
+          <div class="val danger">1</div>
+          <div class="sub">Disabled / maintenance</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Topup Approved</div>
+          <div class="val orange">421</div>
+          <div class="sub">Rp 18.2jt terverifikasi</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Pending Verify</div>
+          <div class="val">2</div>
+          <div class="sub">User baru belum OTP</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h2 class="h-section">Aksi Cepat</h2>
+      <div class="qa-grid">
+        <a class="qa-tile" href="#">
+          <div class="ttl accent">Approve Topup</div>
+          <div class="desc">3 requests menunggu. Klik untuk review bukti &amp; approve.</div>
+          <span class="arr orange">3 Pending →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Manage Users</div>
+          <div class="desc">Suspend, activate, atau hapus user. View saldo &amp; account mereka.</div>
+          <span class="arr">Manage →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Servers</div>
+          <div class="desc">Tambah server baru, disable maintenance, atau hapus yang sudah tidak aktif.</div>
+          <span class="arr">Configure →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Promo Codes</div>
+          <div class="desc">Buat kode diskon untuk user. Set max_uses, expiry, dan diskon %.</div>
+          <span class="arr">Create →</span>
+        </a>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

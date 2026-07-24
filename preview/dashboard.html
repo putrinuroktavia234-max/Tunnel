@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Overview · OrderVPN</title>
+<link rel="stylesheet" href="ordervpn.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+</head>
+<body>
+
+<!-- ====== NAV ====== -->
+<nav class="nav">
+  <div class="nav-brand" aria-label="OrderVPN home">
+    <span class="brand-mark" aria-hidden="true">OV</span>
+    <span class="name">OrderVPN</span>
+    <span class="ver">v3.12.1 · Dashboard</span>
+  </div>
+  <div class="nav-actions">
+    <a href="#" class="btn btn-sm btn-orange-ghost">Admin</a>
+    <a href="#" class="btn btn-sm btn-ghost">Logout</a>
+  </div>
+</nav>
+
+<div class="layout-with-side">
+
+  <!-- ====== SIDEBAR ====== -->
+  <aside class="sidebar">
+    <div class="sidebar-user">
+      <div class="role user">User / Active</div>
+      <div class="who">youzin</div>
+      <div class="email">youzin@crabz.id</div>
+      <div class="saldo">
+        <span class="saldo-label">Saldo Wallet</span>
+        <span class="saldo-amt">Rp 87.500</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="sidebar-nav-item active" href="#"><span class="icn">::</span>Home</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">[]</span>Akun VPN<span class="badge">2</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">~~</span>Traffic</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">&gt;&gt;</span>Servers</a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">##</span>Orders<span class="badge">5</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">++</span>Topup<span class="badge warn">1</span></a>
+      <a class="sidebar-nav-item" href="#"><span class="icn">~~</span>Settings</a>
+    </nav>
+    <div class="sidebar-block">
+      <div class="label">Build</div>
+      <div class="ln"><span>Version</span><span class="num">v3.12.1</span></div>
+      <div class="ln"><span>Channel</span><span class="num ok">Stable</span></div>
+      <div class="ln"><span>Powered by</span><span class="num" style="font-size:10px;">Youzin Crabz</span></div>
+    </div>
+  </aside>
+
+  <!-- ====== MAIN ====== -->
+  <main class="main">
+    <div class="main-head">
+      <div class="eyebrow">01 / Overview</div>
+      <h1>Dashboard Overview.</h1>
+      <p>Selamat datang kembali, <strong style="color:var(--text);">youzin</strong>. Panel kontrol akun tunnel kamu — pantau saldo, akun aktif, dan transaksi dalam satu layar.</p>
+    </div>
+
+    <div class="section-stack">
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="label">Saldo</div>
+          <div class="val orange">Rp 87.500</div>
+          <div class="sub">Saldo wallet aktif</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Akun Aktif</div>
+          <div class="val blue">2<span class="val-suffix"> / 2</span></div>
+          <div class="sub">1 akan expire dalam 7 hari</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Orders</div>
+          <div class="val">5</div>
+          <div class="sub">Transaksi sukses</div>
+        </div>
+        <div class="stat-cell">
+          <div class="label">Topup Pending</div>
+          <div class="val orange">1</div>
+          <div class="sub">Menunggu approval admin</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h2 class="h-section">Quick Actions</h2>
+      <div class="qa-grid">
+        <a class="qa-tile" href="#">
+          <div class="ttl">Browse Servers</div>
+          <div class="desc">Lihat semua server yang tersedia dan pilih region untuk order.</div>
+          <span class="arr">Deploy →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Topup Saldo</div>
+          <div class="desc">Tambah saldo wallet via Dana, GoPay, QRIS, atau bank transfer.</div>
+          <span class="arr">Topup →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Akun VPN Saya</div>
+          <div class="desc">Lihat, renew, atau hapus akun tunnel aktif.</div>
+          <span class="arr">Manage →</span>
+        </a>
+        <a class="qa-tile" href="#">
+          <div class="ttl">Traffic Monitor</div>
+          <div class="desc">Monitor penggunaan bandwidth per akun dan per server.</div>
+          <span class="arr">Monitor →</span>
+        </a>
+      </div>
+
+      <!-- Recent Transactions -->
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Recent Transactions</h3>
+          <a href="#" class="panel-action">All Records →</a>
+        </div>
+        <div class="panel-body tight">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Server</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">#1247</td>
+                <td><span class="pill pill-blue">order</span></td>
+                <td>SG-1 Premium</td>
+                <td class="mono">Rp 25.000</td>
+                <td><span class="pill pill-success">success</span></td>
+                <td class="small">2026-07-18 22:14:08</td>
+              </tr>
+              <tr>
+                <td class="mono">#1244</td>
+                <td><span class="pill pill-blue">topup</span></td>
+                <td>—</td>
+                <td class="mono">Rp 50.000</td>
+                <td><span class="pill pill-success">success</span></td>
+                <td class="small">2026-07-18 21:55:32</td>
+              </tr>
+              <tr>
+                <td class="mono">#1241</td>
+                <td><span class="pill pill-orange">shop</span></td>
+                <td>ID-1 Local</td>
+                <td class="mono">Rp 12.500</td>
+                <td><span class="pill pill-success">success</span></td>
+                <td class="small">2026-07-15 09:11:47</td>
+              </tr>
+              <tr>
+                <td class="mono">#1238</td>
+                <td><span class="pill pill-orange">renew</span></td>
+                <td>SG-1 Premium</td>
+                <td class="mono">Rp 10.000</td>
+                <td><span class="pill pill-success">success</span></td>
+                <td class="small">2026-07-10 18:32:21</td>
+              </tr>
+              <tr>
+                <td class="mono">#1235</td>
+                <td><span class="pill pill-blue">order</span></td>
+                <td>ID-1 Local</td>
+                <td class="mono">Rp 12.500</td>
+                <td><span class="pill pill-success">success</span></td>
+                <td class="small">2026-07-02 14:08:55</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
