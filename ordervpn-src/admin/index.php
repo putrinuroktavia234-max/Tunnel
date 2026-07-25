@@ -1196,11 +1196,11 @@ function startMonitorRefresh() {
 }
 
 function fetchMonitorData() {
-    fetch('/admin/?ajax_monitor_list&t=' + Date.now())
+    fetch('/ordervpn/admin/?ajax_monitor_list&t=' + Date.now())
         .then(r => r.json())
         .then(servers => {
             servers.forEach(s => {
-                fetch('/admin/?ajax_monitor_single=' + encodeURIComponent(s.code) + '&t=' + Date.now())
+                fetch('/ordervpn/admin/?ajax_monitor_single=' + encodeURIComponent(s.code) + '&t=' + Date.now())
                     .then(r => r.json())
                     .then(data => updateServerRow(s.code, data))
                     .catch(() => updateServerRow(s.code, null));
