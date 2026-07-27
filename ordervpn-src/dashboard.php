@@ -536,17 +536,13 @@ function selectDuration(btn) {
   document.querySelectorAll('.proto-btn[data-days]').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active'); currentDays=parseInt(btn.dataset.days); updateHarga();
 }
-function updateHarga() {
-  const sel=document.getElementById('orderServer');
-  if(!sel) return;
-  const opt=sel.options[sel.selectedIndex];
-  if(!opt) return;
-  const hPd=parseFloat(opt.dataset.hargaHari||0), hPm=parseFloat(opt.dataset.hargaBulan||0);
-  let h = currentDays >= 30 ? (hPm * Math.floor(currentDays/30)) + (hPd * (currentDays%30)) : hPd * currentDays;
-  document.getElementById('hargaVal').textContent='Rp '+new Intl.NumberFormat('id-ID').format(h);
-}
-document.getElementById('orderServer')?.addEventListener('change', function(){updateHarga();applyPromo(true)});
-updateHarga();
+document.addEventListener('DOMContentLoaded', function() {
+  var sel = document.getElementById('orderServer');
+  if(sel) {
+    sel.addEventListener('change', function(){ updateHarga(); applyPromo(true); });
+    updateHarga();
+  }
+});
 
 let promoApplied = null;
 
@@ -562,7 +558,7 @@ function applyPromo(skipAlert) {
   }
   btn.disabled = true;
   btn.innerHTML = '<span class="loading"></span>';
-  fetch('/api/check_promo.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'code='+encodeURIComponent(code)})
+  fetch('/ordervpn/api/check_promo.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'code='+encodeURIComponent(code)})
   .then(r=>r.json()).then(res=>{
     if(res.success) {
       promoApplied = res.data;
@@ -626,7 +622,7 @@ function doOrder() {
   fd.append('server_id',serverId); fd.append('tipe',currentProto);
   fd.append('username',username); fd.append('days',currentDays);
   if(promoApplied) fd.append('promo_code',promoApplied.code);
-  fetch('/api/create_order.php',{method:'POST',body:fd})
+  fetch('/ordervpn/api/create_order.php',{method:'POST',body:fd})
   .then(r=>r.json()).then(res=>{
     btn.innerHTML=SVG.cart+' Order Sekarang';
     if(res.success){
@@ -653,7 +649,7 @@ function doTrial() {
   const fd=new FormData();
   fd.append('server_id',serverId); fd.append('tipe',currentTrialProto);
   fd.append('username',username); fd.append('days',1); fd.append('is_trial',1);
-  fetch('/api/create_order.php',{method:'POST',body:fd})
+  fetch('/ordervpn/api/create_order.php',{method:'POST',body:fd})
   .then(r=>r.json()).then(res=>{
     closeModal('modalTrial');
     if(res.success){
@@ -780,7 +776,7 @@ function confirmDelete(id,name,type){deleteAkunId=id;deleteAkunType=type;documen
 function doDelete(){
   if(!deleteAkunId) return;
   document.getElementById('deleteBtn').innerHTML='<span class="loading"></span>';
-  fetch('/api/delete_account.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'akun_id='+deleteAkunId})
+  fetch('/ordervpn/api/delete_account.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'akun_id='+deleteAkunId})
   .then(r=>r.json()).then(res=>{
     closeModal('modalDelete');
     if(res.success){showAlert('pageAlert',SVG.ok+' Akun berhasil dihapus dari server!','success');setTimeout(()=>location.reload(),1500);}
@@ -796,7 +792,7 @@ function doTopup(){
   fd.append('amount',amount); fd.append('payment_method',method);
   const file=document.getElementById('buktiFile').files[0];
   if(file) fd.append('bukti',file);
-  fetch('/api/topup.php',{method:'POST',body:fd})
+  fetch('/ordervpn/api/topup.php',{method:'POST',body:fd})
   .then(r=>r.json()).then(res=>{
     document.getElementById('topupResult').innerHTML=res.success
       ?'<div class="alert alert-success">'+SVG.ok+' '+escHtml(res.message)+'</div>'
@@ -813,7 +809,7 @@ function saveProfile(){
   const fd=new FormData();
   fd.append('email',email); fd.append('whatsapp',wa);
   if(pass) fd.append('password',pass);
-  fetch('/api/update_profile.php',{method:'POST',body:fd})
+  fetch('/ordervpn/api/update_profile.php',{method:'POST',body:fd})
   .then(r=>r.json()).then(res=>{
     showAlert('settingAlert',res.success?SVG.ok+' Profil berhasil disimpan!':SVG.no+' '+escHtml(res.message),res.success?'success':'error');
   });
@@ -823,7 +819,7 @@ function uploadAvatar(){
   const file=document.getElementById('avatarFile').files[0];
   if(!file){showAlert('settingAlert','Pilih file gambar dulu!','error');return;}
   const fd=new FormData(); fd.append('avatar',file);
-  fetch('/api/upload_avatar.php',{method:'POST',body:fd})
+  fetch('/ordervpn/api/upload_avatar.php',{method:'POST',body:fd})
   .then(r=>r.json()).then(res=>{
     if(res.success){showAlert('settingAlert',SVG.ok+' Foto profil berhasil diupdate!','success');setTimeout(()=>location.reload(),1200);}
     else{showAlert('settingAlert',SVG.no+' '+escHtml(res.message),'error');}
@@ -832,7 +828,7 @@ function uploadAvatar(){
 
 function deleteAvatar(){
   if(!confirm('Hapus foto profil?'))return;
-  fetch('/api/delete_avatar.php',{method:'POST'})
+  fetch('/ordervpn/api/delete_avatar.php',{method:'POST'})
   .then(r=>r.json()).then(res=>{
     if(res.success){showAlert('settingAlert',SVG.ok+' Foto profil dihapus!','success');setTimeout(()=>location.reload(),1200);}
     else{showAlert('settingAlert',SVG.no+' '+escHtml(res.message),'error');}

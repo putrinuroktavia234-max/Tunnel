@@ -24,7 +24,7 @@ validate_username() {
     done
 }
 validate_days() { [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 365 ] 2>/dev/null || { echo '{"success":false,"message":"Days must be 1-365"}'; exit 1; }; }
-validate_quota() { [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 1000 ] 2>/dev/null || { echo '{"success":false,"message":"Quota must be 1-1000 GB"}'; exit 1; }; }
+validate_quota() { :; }  # quota limit removed - always pass
 validate_iplimit() { [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 10 ] 2>/dev/null || { echo '{"success":false,"message":"IP limit must be 1-10"}'; exit 1; }; }
 
 acquire_lock() {

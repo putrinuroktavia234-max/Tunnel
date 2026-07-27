@@ -242,6 +242,21 @@ if ($act==='add_server') {
         header('Location: /ordervpn/admin/?saved=1'); exit;
     }
 
+    if ($act==='edit_server') {
+        $sid = (int)$_POST['server_id'];
+        $db->prepare("UPDATE servers SET nama_server=?, code_server=?, lokasi=?, flag=?, harga_hari=?, harga_bulan=?, host=?, port=?, ssh_user=?, ssh_password=?, ssh_key=?, domain=? WHERE id=?")
+           ->execute([
+               sanitize($_POST['nama_server']), sanitize($_POST['code_server']),
+               sanitize($_POST['lokasi']), sanitize($_POST['flag'] ?? '🇮🇩'),
+               (float)$_POST['harga_hari'], (float)$_POST['harga_bulan'],
+               sanitize($_POST['host']), (int)($_POST['port'] ?? 22),
+               sanitize($_POST['ssh_user'] ?? 'root'), sanitize($_POST['ssh_password'] ?? ''),
+               sanitize($_POST['ssh_key'] ?? ''), sanitize($_POST['domain'] ?? ''),
+               $sid
+           ]);
+        header('Location: /ordervpn/admin/?edited=1'); exit;
+    }
+
     if ($act==='toggle_server') {
         $sid=(int)$_POST['server_id']; $s=sanitize($_POST['status']);
         $db->prepare("UPDATE servers SET status=? WHERE id=?")->execute([$s,$sid]);
@@ -329,7 +344,7 @@ $saved   = isset($_GET['saved']);
       <span><?=$appName?> <span class="admin-badge">Admin</span></span>
     </div>
     <nav class="admin-sidebar-nav">
-      <button class="tab-btn active" onclick="showTab('dashboard',this)">
+      <button class="tab-btn" onclick="showTab('dashboard',this)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Dashboard
       </button>
@@ -337,7 +352,7 @@ $saved   = isset($_GET['saved']);
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Topup<?php if($stats['topup_p']>0):?> <span class="badge-count"><?=$stats['topup_p']?></span><?php endif;?>
       </button>
-      <button class="tab-btn" onclick="showTab('servers',this)">
+      <button class="tab-btn active" onclick="showTab('servers',this)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         Server
       </button>
@@ -381,11 +396,11 @@ $saved   = isset($_GET['saved']);
         </div>
         <div style="flex:1;min-width:0"><div style="font-size:.82rem;font-weight:600;color:var(--text)"><?=esc($session['username'])?></div><div style="font-size:.7rem;color:var(--muted)">Admin</div></div>
       </div>
-      <a href="/dashboard.php" class="tab-btn" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;width:100%;padding:0.55rem 0.8rem;border-radius:8px">
+      <a href="/ordervpn/dashboard.php" class="tab-btn" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;width:100%;padding:0.55rem 0.8rem;border-radius:8px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         User Panel
       </a>
-      <a href="/api/logout.php" class="tab-btn" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;width:100%;padding:0.55rem 0.8rem;border-radius:8px;color:var(--danger)">
+      <a href="/ordervpn/api/logout.php" class="tab-btn" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;width:100%;padding:0.55rem 0.8rem;border-radius:8px;color:var(--danger)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Logout
       </a>
@@ -400,7 +415,7 @@ $saved   = isset($_GET['saved']);
   </div><?php endif;?>
 
   <!-- DASHBOARD -->
-  <div class="page active admin-section" id="tab-dashboard">
+  <div class="page admin-section" id="tab-dashboard">
     <div class="stats">
       <div class="stat-card">
         <div class="stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
@@ -502,16 +517,78 @@ $saved   = isset($_GET['saved']);
   </div>
 
   <!-- SERVERS -->
-  <div class="page admin-section" id="tab-servers">
+  <div class="page active admin-section" id="tab-servers">
     <div class="card">
       <div class="card-header"><div class="card-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-        Server List
-      </div><button class="btn btn-primary" onclick="document.getElementById('addServerForm').style.display=document.getElementById('addServerForm').style.display==='none'?'block':'none'">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Tambah Server
-      </button></div>
-      <div id="autoDetectForm" style="padding:1.25rem;border-bottom:1px solid var(--border);background:linear-gradient(135deg, rgba(99,102,241,.05), rgba(139,92,246,.05))">
+        Server List (<?=count($servers)?>)
+      </div>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-primary" onclick="toggleForm('addServerForm')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Tambah
+        </button>
+        <button class="btn btn-outline" onclick="toggleForm('autoDetectForm')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>
+          Auto-Detect
+        </button>
+      </div></div>
+      <!-- SERVER TABLE -->
+      <div class="card-body overflow-x">
+        <div class="table-wrap">
+          <?php if(empty($servers)):?>
+          <div class="empty-state"><div class="icon">📡</div><h3>Belum ada server</h3><p>Klik Tambah atau Auto-Detect untuk menambahkan VPS.</p></div>
+          <?php else:?>
+          <table>
+            <thead><tr><th>Server</th><th>Ping</th><th>Uptime</th><th>CPU</th><th>RAM</th><th>Akun</th><th>IP/Host</th><th>Harga/Hari</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody>
+            <?php foreach($servers as $s):?>
+            <tr data-server="<?=$s['code_server']?>">
+              <td><strong><?=esc($s['nama_server'])?></strong><br><span style="color:var(--muted);font-size:.72rem"><?=esc($s['code_server'])?> · <?=$s['flag']??'🇮🇩'?> <?=esc($s['lokasi'])?></span></td>
+              <td class="mon-ping" data-code="<?=$s['code_server']?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></td>
+              <td class="mon-uptime" data-code="<?=$s['code_server']?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></td>
+              <td class="mon-cpu" data-code="<?=$s['code_server']?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></td>
+              <td class="mon-ram" data-code="<?=$s['code_server']?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></td>
+              <td class="mon-accounts" data-code="<?=$s['code_server']?>"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></td>
+              <td style="font-family:monospace;font-size:.78rem"><?=esc($s['host'])?></td>
+              <td style="font-weight:700;color:var(--success);white-space:nowrap"><?=formatRupiah($s['harga_hari'])?></td>
+              <td><span class="badge b-<?=$s['status']?>"><?=$s['status']?></span></td>
+              <td>
+                <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                  <button class="btn btn-edit" type="button" onclick="editServer(<?=$s['id']?>,'<?=esc(addslashes($s['nama_server']))?>','<?=esc(addslashes($s['code_server']))?>','<?=esc(addslashes($s['lokasi']))?>','<?=esc(addslashes($s['flag']??'🇮🇩'))?>','<?=$s['harga_hari']?>','<?=$s['harga_bulan']?>','<?=esc(addslashes($s['host']))?>','<?=$s['port']?>','<?=esc(addslashes($s['ssh_user']??'root'))?>','<?=esc(addslashes($s['ssh_password']??''))?>','<?=esc(addslashes($s['ssh_key']??''))?>','<?=esc(addslashes($s['domain']??''))?>')" title="Edit server"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit</button>
+                  <form method="POST" style="display:inline"><?=csrf_field()?><input type="hidden" name="action" value="toggle_server"><input type="hidden" name="server_id" value="<?=$s['id']?>"><input type="hidden" name="status" value="<?=$s['status']==='ready'?'maintenance':'ready'?>"><button class="btn" title="<?=$s['status']==='ready'?'Maintenance':'Aktifkan'?>"><?php if($s['status']==='ready'):?><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><?php else:?><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><?php endif;?></button></form>
+                  <form method="POST" style="display:inline" onsubmit="return confirm('Hapus server ini?',this)"><?=csrf_field()?><input type="hidden" name="action" value="delete_server"><input type="hidden" name="server_id" value="<?=$s['id']?>"><button class="btn btn-danger" title="Hapus server"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></form>
+                </div>
+              </td>
+            </tr>
+            <?php endforeach;?>
+            </tbody>
+          </table>
+          <?php endif;?>
+        </div>
+      </div>
+      <!-- ADD FORMS (hidden) -->
+      <div id="addServerForm" style="display:none;padding:1.25rem;border-top:1px solid var(--border)">
+        <strong style="font-size:.9rem">Tambah Server Manual</strong>
+        <form method="POST" style="margin-top:.75rem"><?=csrf_field()?><input type="hidden" name="action" value="add_server">
+          <div class="grid2">
+            <div><label>Nama Server</label><input name="nama_server" required></div>
+            <div><label>Kode Server</label><input name="code_server" required></div>
+            <div><label>Lokasi</label><input name="lokasi" required></div>
+            <div><label>Flag</label><input name="flag" value="🇮🇩"></div>
+            <div><label>IP/Host</label><input name="host" required></div>
+            <div><label>Port SSH</label><input name="port" type="number" value="22"></div>
+            <div><label>SSH User</label><input name="ssh_user" value="root"></div>
+            <div><label>SSH Password</label><input name="ssh_password" type="password"></div>
+            <div><label>Harga/Hari (Rp)</label><input name="harga_hari" type="number" value="500" required></div>
+            <div><label>Harga/Bulan (Rp)</label><input name="harga_bulan" type="number" value="15000" required></div>
+            <div><label>Domain</label><input name="domain"></div>
+            <div><label>SSH Key Path</label><input name="ssh_key" placeholder="/root/.ssh/id_rsa"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="margin-top:.75rem">Save Server</button>
+        </form>
+      </div>
+      <div id="autoDetectForm" style="display:none;padding:1.25rem;border-top:1px solid var(--border);background:linear-gradient(135deg, rgba(99,102,241,.05), rgba(139,92,246,.05))">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
             <div>
                 <strong style="font-size:.9rem;color:var(--primary)">
@@ -546,66 +623,6 @@ $saved   = isset($_GET['saved']);
             </div>
             <button type="submit" class="btn btn-primary">Save Server</button>
         </form>
-      </div>
-      <div class="card-body overflow-x">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Server</th><th>Ping</th><th>Uptime</th><th>CPU</th><th>RAM</th><th>Akun</th><th>Lokasi</th><th>Harga/Hari</th><th>Status</th><th>Aksi</th></tr></thead>
-            <tbody>
-            <?php foreach($servers as $s):?>
-            <tr data-server="<?=$s['code_server']?>">
-              <td><strong><?=esc($s['nama_server'])?></strong><br><span style="color:var(--muted);font-size:.72rem"><?=esc($s['code_server'])?></span></td>
-              <td class="mon-ping" data-code="<?=$s['code_server']?>">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </td>
-              <td class="mon-uptime" data-code="<?=$s['code_server']?>">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </td>
-              <td class="mon-cpu" data-code="<?=$s['code_server']?>">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </td>
-              <td class="mon-ram" data-code="<?=$s['code_server']?>">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </td>
-              <td class="mon-accounts" data-code="<?=$s['code_server']?>">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spinner"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              </td>
-              <td><?=$s['flag']??'&#x1F1EE;&#x1F1E9;'?> <?=esc($s['lokasi'])?></td>
-              <td style="font-family:monospace;font-size:.78rem"><?=esc($s['host'])?></td>
-              <td><?=formatRupiah($s['harga_hari'])?></td>
-              <td><span class="badge b-<?=$s['status']?>"><?=$s['status']?></span></td>
-              <td>
-                <div style="display:flex;gap:.35rem;flex-wrap:wrap">
-                  <form method="POST" style="display:inline">
-                    <?=csrf_field()?>
-                    <input type="hidden" name="action" value="toggle_server">
-                    <input type="hidden" name="server_id" value="<?=$s['id']?>">
-                    <input type="hidden" name="status" value="<?=$s['status']==='ready'?'maintenance':'ready'?>">
-                    <button class="btn" title="<?=$s['status']==='ready'?'Maintenance':'Aktifkan'?>">
-                      <?php if($s['status']==='ready'):?>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                      MNT
-                      <?php else:?>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                      ON
-                      <?php endif;?>
-                    </button>
-                  </form>
-                  <form method="POST" style="display:inline" onsubmit="return confirm('Hapus server ini?',this)">
-                    <?=csrf_field()?>
-                    <input type="hidden" name="action" value="delete_server">
-                    <input type="hidden" name="server_id" value="<?=$s['id']?>">
-                    <button class="btn btn-danger" title="Hapus server">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-            <?php endforeach;?>
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   </div>
@@ -1176,6 +1193,7 @@ $saved   = isset($_GET['saved']);
 
 </div><!-- .content -->
 <script>
+function toggleForm(id){var e=document.getElementById(id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 function showTab(t,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1349,5 +1367,60 @@ function submitSaldo(mode){
 
   </main>
 </div>
+
+<!-- Edit Server Modal -->
+<div id="editServerModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#0f1929;border:1px solid var(--border);border-radius:16px;padding:1.5rem;width:90%;max-width:550px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.5)">
+    <div style="font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit Server</div>
+    <form method="POST" id="editServerForm">
+      <?=csrf_field()?>
+      <input type="hidden" name="action" value="edit_server">
+      <input type="hidden" name="server_id" id="editServerId">
+      <div class="grid2">
+        <div><label>Nama Server</label><input name="nama_server" id="editNamaServer" required></div>
+        <div><label>Kode Server</label><input name="code_server" id="editCodeServer" required></div>
+        <div><label>Lokasi</label><input name="lokasi" id="editLokasi" required></div>
+        <div><label>Flag Emoji</label><input name="flag" id="editFlag"></div>
+        <div><label>IP/Host VPS</label><input name="host" id="editHost" required></div>
+        <div><label>Port SSH</label><input name="port" type="number" id="editPort"></div>
+        <div><label>SSH User</label><input name="ssh_user" id="editSshUser"></div>
+        <div><label>SSH Password</label><input name="ssh_password" type="password" id="editSshPass" placeholder="Kosongkan jika tidak berubah"></div>
+        <div><label>Harga/Hari (Rp)</label><input name="harga_hari" type="number" id="editHargaHari" required></div>
+        <div><label>Harga/Bulan (Rp)</label><input name="harga_bulan" type="number" id="editHargaBulan" required></div>
+        <div><label>Domain</label><input name="domain" id="editDomain"></div>
+        <div><label>SSH Key Path</label><input name="ssh_key" id="editSshKey" placeholder="/root/.ssh/id_rsa"></div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:flex-end">
+        <button type="submit" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Simpan
+        </button>
+        <button type="button" class="btn btn-outline" onclick="closeEditServer()">Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function editServer(id,nama,code,lokasi,flag,hargaHari,hargaBulan,host,port,sshUser,sshPass,sshKey,domain) {
+  document.getElementById('editServerId').value = id;
+  document.getElementById('editNamaServer').value = nama;
+  document.getElementById('editCodeServer').value = code;
+  document.getElementById('editLokasi').value = lokasi;
+  document.getElementById('editFlag').value = flag;
+  document.getElementById('editHargaHari').value = hargaHari;
+  document.getElementById('editHargaBulan').value = hargaBulan;
+  document.getElementById('editHost').value = host;
+  document.getElementById('editPort').value = port;
+  document.getElementById('editSshUser').value = sshUser;
+  document.getElementById('editSshPass').value = sshPass;
+  document.getElementById('editSshKey').value = sshKey;
+  document.getElementById('editDomain').value = domain;
+  document.getElementById('editServerModal').style.display = 'flex';
+}
+function closeEditServer() {
+  document.getElementById('editServerModal').style.display = 'none';
+}
+</script>
+
 </body>
 </html>

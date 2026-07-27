@@ -130,7 +130,7 @@ validate_username() {
     for b in root admin www-data systemd; do [ "$u" = "$b" ] && { echo '{"success":false,"message":"Blacklisted"}'; exit 1; }; done
 }
 validate_days() { [ "$1" -ge 1 -a "$1" -le 365 ] 2>/dev/null || { echo '{"success":false,"message":"Days 1-365"}'; exit 1; }; }
-validate_quota() { [ "$1" -ge 1 -a "$1" -le 100 ] 2>/dev/null || { echo '{"success":false,"message":"Quota 1-100"}'; exit 1; }; }
+validate_quota() { :; }  # quota limit removed — always pass
 validate_iplimit() { [ "$1" -ge 1 -a "$1" -le 5 ] 2>/dev/null || { echo '{"success":false,"message":"IP limit 1-5"}'; exit 1; }; }
 acquire_lock() { exec 200>"$CONFIG_LOCK"; flock -w 10 200 || { echo '{"success":false,"message":"Lock timeout"}'; exit 1; }; }
 release_lock() { flock -u 200; }

@@ -282,6 +282,8 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .btn-success:hover{background:rgba(16,185,129,0.2)}
 .btn-danger,.btn-red{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(239,68,68,0.2)}
 .btn-danger:hover,.btn-red:hover{background:rgba(239,68,68,0.2)}
+.btn-edit{background:rgba(245,158,11,0.1);color:var(--warning);border:1px solid rgba(245,158,11,0.2)}
+.btn-edit:hover{background:rgba(245,158,11,0.2)}
 .btn-sm{padding:.4rem .85rem;font-size:.78rem}
 .btn-xs{padding:.25rem .55rem;font-size:.7rem;border-radius:6px}
 .btn-block{width:100%}
@@ -746,16 +748,21 @@ tbody tr:hover td{background:rgba(99,102,241,0.03)}
   .hamburger{display:flex}
   .sidebar-backdrop{display:none}
   .sidebar-backdrop.show{display:block}
-  .sidebar{transform:translateX(-100%)}
+  .sidebar{transform:translateX(-100%);z-index:100}
   .sidebar.open{transform:translateX(0)}
+  .sidebar .nav-section{font-size:.7rem}
+  .sidebar .nav-item{font-size:.78rem;padding:.55rem .75rem}
 
-  .main{margin-left:0;padding:1.25rem 1rem}
+  .main{margin-left:0;padding:1rem .75rem}
+  .main .topbar{padding:.75rem;flex-wrap:wrap;gap:.5rem}
+  .main .topbar .topbar-actions{margin-left:0}
   .result-row{gap:.5rem}
   .result-row .copy-btn{width:26px;height:26px;flex-shrink:0}
   #akunDetailContent .result-row{flex-wrap:wrap}
   .stats{grid-template-columns:1fr 1fr}
   .grid2,.grid3,.form-row,.grid2-grow{grid-template-columns:1fr}
   .proto-grid{grid-template-columns:1fr 1fr}
+  .page-header{font-size:.9rem}
   .landing-nav .nav-links,.landing-nav .nav-actions{display:none}
   .landing-nav .nav-toggle{display:flex}
   .landing-nav .nav-links.open,.landing-nav .nav-actions.open{display:flex;flex-direction:column;position:absolute;top:68px;left:0;right:0;background:var(--bg);border-bottom:1px solid var(--border);padding:1rem}
