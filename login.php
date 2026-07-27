@@ -5,9 +5,9 @@ if (isset($_SESSION['user_id'])) { header('Location: /ordervpn/dashboard.php'); 
 
 $appName = getSetting('app_name','OrderVPN');
 $error = ''; $success = '';
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD']==='POST') {
-    $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
     if ($action==='login') {
         $u = sanitize($_POST['username']??'');
@@ -115,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             $success='OTP baru sudah dikirim ke email kamu.';
         } else { $error='Email tidak ditemukan atau sudah terverifikasi.'; }
     }
-}
 
     // === FORGOT PASSWORD ===
     if ($action==='forgot_password') {
@@ -172,6 +171,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
         }
     }
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__.'/includes/config.php';
-if (isset($_SESSION['user_id'])) { header('Location: /dashboard.php'); exit; }
+if (isset($_SESSION['user_id'])) { header('Location: /ordervpn/dashboard.php'); exit; }
 
 $appName = getSetting('app_name','OrderVPN');
 
