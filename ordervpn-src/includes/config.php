@@ -195,5 +195,3 @@ function requireAdmin() {
     return $s;
 }
 
-
-require_once __DIR__ . '/security.php';

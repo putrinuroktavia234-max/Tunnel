@@ -170,7 +170,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 
   <div class="nav-actions">
     <a href="login.php" class="btn btn-ghost"><?=icon('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>')?> Masuk</a>
-    <a href="login.php?register=1" class="btn btn-primary">Daftar <?=icon('<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>')?></a>
+    <a href="login.php" class="btn btn-primary">Masuk <?=icon('<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>')?></a>
   </div>
   <button class="hamburger" id="hamburger" onclick="document.getElementById('navbar').classList.toggle('mobile-open')">
     <span></span><span></span><span></span>
@@ -185,7 +185,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
     <h1>Layanan Tunneling Terbaik</h1>
     <p>Nikmati berselancar dengan layanan tunneling terbaik. SSH, Trojan, VMess, VLess, dan UDP Custom dengan harga termurah.</p>
     <div class="hero-actions">
-      <a href="login.php?register=1" class="btn btn-primary">Daftar Sekarang <?=icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>')?></a>
+      <a href="login.php" class="btn btn-primary">Masuk Sekarang <?=icon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>')?></a>
       <a href="login.php" class="btn btn-ghost"><?=icon('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>')?> Masuk</a>
     </div>
   </div>
@@ -240,7 +240,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
   <div class="footer-grid">
     <div class="footer-brand"><h3><?=$appName?></h3><p>Layanan Tunneling Premium Indonesia. Berselancar dengan aman di dunia internet dengan tunneling terbaik.</p></div>
     <div class="footer-col"><h4>Layanan</h4><a href="#layanan">SSH</a><a href="#layanan">Trojan</a><a href="#layanan">VMess</a><a href="#layanan">VLess</a></div>
-    <div class="footer-col"><h4>Halaman</h4><a href="#hero">Beranda</a><a href="#harga">Harga</a><a href="login.php">Masuk</a><a href="login.php?register=1">Daftar</a></div>
+    <div class="footer-col"><h4>Halaman</h4><a href="#hero">Beranda</a><a href="#harga">Harga</a><a href="login.php">Masuk</a></div>
     <div class="footer-col"><h4>Kontak</h4><a href="#">Telegram: <?=esc(getSetting('contact_tg','@ordervpn_admin'))?></a><a href="#">WhatsApp: <?=esc(getSetting('contact_wa','0812-3456-7890'))?></a></div>
   </div>
   <div class="footer-bottom">2020-<?=date('Y')?> &copy; <?=$appName?> &mdash; All Rights Reserved</div>
