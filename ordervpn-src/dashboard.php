@@ -793,6 +793,7 @@ function showAkunDetail(a) {
     server: a.nama_server,
     masa_aktif: a.masa_aktif,
     status: a.status,
+    link_config: a.link_config,
     link_tls: a.link_tls,
     link_nontls: a.link_nontls,
     link_grpc: a.link_grpc
@@ -871,9 +872,17 @@ function showAlert(containerId,msg,type){
 }
 function copyText(text,el){
   const decoded=decodeURIComponent(text);
-  navigator.clipboard?.writeText(decoded).then(()=>{
-    const orig=el.innerHTML; el.innerHTML=SVG.check+' Tersalin!'; setTimeout(()=>{el.innerHTML=orig},1500);
-  }).catch(()=>{});
+  const done=()=>{const orig=el.innerHTML;el.innerHTML=SVG.check+' Tersalin!';setTimeout(()=>{el.innerHTML=orig},1500);};
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(decoded).then(done).catch(()=>{fallbackCopy(decoded,done);});
+  }else{
+    fallbackCopy(decoded,done);
+  }
+}
+function fallbackCopy(text,cb){
+  const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');if(cb)cb();}catch(e){}
+  document.body.removeChild(ta);
 }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 </script>
