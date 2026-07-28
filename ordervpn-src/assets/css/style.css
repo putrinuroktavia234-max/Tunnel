@@ -565,6 +565,27 @@ tbody tr:hover td{background:rgba(99,102,241,0.03)}
 }
 .copy-btn:hover{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .link-row .copy-btn{vertical-align:middle}
+/* Detail Grid — card-style VPN info rows */
+.detail-grid{display:flex;flex-direction:column;gap:0}
+.detail-grid .result-row{padding:.5rem .25rem}
+
+/* Config Section — full link display */
+.config-section{margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)}
+.config-title{font-size:.78rem;font-weight:600;color:var(--text-muted);margin-bottom:.5rem}
+.config-link-row{display:flex;align-items:flex-start;gap:.5rem;padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.config-link-row:last-child{border-bottom:none}
+.config-label{font-size:.75rem;font-weight:600;color:var(--accent);min-width:55px;padding-top:2px}
+.config-url{flex:1;font-size:.68rem;font-family:'JetBrains Mono',monospace;word-break:break-all;color:var(--text);line-height:1.5;background:var(--bg-input);padding:.3rem .5rem;border-radius:4px;cursor:pointer;transition:var(--transition)}
+.config-url:hover{background:color-mix(in srgb,var(--accent) 10%,var(--bg-input))}
+.config-link-row .copy-btn{width:30px;height:30px;flex-shrink:0;align-self:center}
+
+/* Mobile responsive */
+@media(max-width:480px){
+  .config-link-row{flex-wrap:wrap}
+  .config-label{min-width:100%}
+  .config-url{font-size:.64rem}
+}
+
 .link-box{
   background:var(--bg-input);border:1px solid var(--border);border-radius:8px;
   padding:.5rem .75rem;font-size:.72rem;font-family:'JetBrains Mono',monospace;

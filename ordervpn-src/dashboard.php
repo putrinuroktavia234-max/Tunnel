@@ -673,42 +673,66 @@ function detailRow(label, value, canCopy) {
   return `<div class="result-row"><span class="result-key">${label}</span><span class="result-val">${v}${copyBtn}</span></div>`;
 }
 
+function parseLinkInfo(link) {
+  let info = {domain:'', port:'', path:'', sni:''};
+  if(!link) return info;
+  try {
+    let u = link;
+    // vmess:// format - decode base64 first
+    if(u.startsWith('vmess://')) {
+      try { u = JSON.parse(atob(u.replace('vmess://',''))); info.domain = u.add||''; info.port = u.port||''; info.path = u.path||''; info.sni = u.sni||''; return info; }
+      catch(e) { /* fall through to regex */ }
+    }
+    let m = u.match(/@([^:?]+):?(\d*)\?/);
+    if(m) { info.domain = m[1]; info.port = m[2]; }
+    m = u.match(/[?&]path=([^&#]+)/);
+    if(m) info.path = decodeURIComponent(m[1]);
+    m = u.match(/[?&]sni=([^&#]+)/);
+    if(m) info.sni = decodeURIComponent(m[1]);
+  } catch(e) {}
+  return info;
+}
+
 function buildDetailHTML(d, isOrderResult) {
+  let info = parseLinkInfo(d.link_tls || d.link_config || '');
   let html = '';
   if(isOrderResult) html += `<div class="alert alert-success" style="margin-bottom:.75rem">${SVG.ok} Akun berhasil dibuat!</div>`;
 
-  // Badge tipe
-  let tipeBadge = d.tipe ? `<span class="akun-badge badge-${d.tipe}" style="font-size:.75rem;padding:.2rem .5rem">${d.tipe.toUpperCase()}</span>` : '';
-  if(d.is_trial) tipeBadge += ' <span style="color:var(--orange);font-size:.75rem">Trial</span>';
+  // Status + Tipe badges
+  let statusBadge = d.status === 'active' ? '<span class="akun-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3)">● Aktif</span>' : '<span class="akun-badge" style="background:rgba(239,68,68,0.15);color:#ef4444">● '+escHtml(d.status||'?')+'</span>';
+  let tipeBadge = d.tipe ? `<span class="akun-badge badge-${d.tipe}">${d.tipe.toUpperCase()}</span>` : '';
+  if(d.is_trial) tipeBadge += ' <span style="color:#f59e0b;font-size:.72rem;font-weight:600">⚡ Trial</span>';
 
-  // Detail rows
+  // Header info
+  html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.4rem">${tipeBadge}${statusBadge}</div>`;
+
+  // Detail info table-style
+  html += `<div class="detail-grid">`;
   html += detailRow('Username', d.username, true);
-  html += `<div class="result-row"><span class="result-key">Tipe</span><span class="result-val">${tipeBadge}</span></div>`;
   if(d.uuid) html += detailRow('UUID', d.uuid, true);
   if(d.password) html += detailRow('Password', d.password, true);
   if(d.server) html += detailRow('Server', d.server, false);
+  if(info.domain) html += detailRow('Domain', info.domain, false);
+  if(info.port) html += detailRow('Port', (d.link_tls?'443 (TLS)':'')||info.port, false);
+  if(info.path) html += detailRow('Path WS', info.path, false);
+  let grpcInfo = parseLinkInfo(d.link_grpc||'');
+  if(grpcInfo.path) html += detailRow('Path gRPC', grpcInfo.path, false);
   let expiry = d.expired || d.masa_aktif || '';
-  if(expiry) html += detailRow('Masa Aktif', expiry, false);
-  if(d.status) html += detailRow('Status', d.status, false);
+  if(expiry) html += detailRow('Expired', expiry, false);
+  html += `</div>`;
 
-  // Config Links
-  let hasLinks = d.link_tls || d.link_nontls || d.link_grpc;
+  // Config Links — full, not truncated
+  let hasLinks = d.link_tls || d.link_nontls || d.link_grpc || d.link_config;
   if(hasLinks) {
-    html += `<div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
-      <div style="font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.5rem">Konfigurasi</div>`;
-    if(d.link_tls) html += linkRow('TLS', d.link_tls);
-    if(d.link_nontls) html += linkRow('NonTLS', d.link_nontls);
-    if(d.link_grpc) html += linkRow('gRPC', d.link_grpc);
+    html += `<div class="config-section"><div class="config-title">⚙️ Konfigurasi</div>`;
+    if(d.link_tls) html += configLink('🔒 TLS', d.link_tls);
+    if(d.link_nontls) html += configLink('🔓 NonTLS', d.link_nontls);
+    if(d.link_grpc) html += configLink('📡 gRPC', d.link_grpc);
     html += `</div>`;
   }
 
-  // Download
-  if(d.download) {
-    html += `<a href="${escHtml(d.download)}" target="_blank" class="btn btn-outline btn-sm" style="width:100%;margin-top:.75rem">${SVG.dl} Download Config</a>`;
-  }
-
   // Copy All button
-  html += `<button class="btn btn-outline btn-sm" onclick="copyAllDetails(this)" style="width:100%;margin-top:.5rem" data-d='${encodeURIComponent(JSON.stringify(d))}'>${SVG.copy} Salin Semua Detail</button>`;
+  html += `<button class="btn btn-outline btn-sm" onclick="copyAllDetails(this)" style="width:100%;margin-top:.75rem" data-d='${encodeURIComponent(JSON.stringify(d))}'>${SVG.copy} Salin Semua Detail</button>`;
 
   // Footer actions for order result
   if(isOrderResult) {
@@ -721,33 +745,39 @@ function buildDetailHTML(d, isOrderResult) {
   return html;
 }
 
-function linkRow(label, link) {
-  return `<div class="result-row link-row">
-    <span class="result-key">${label}</span>
-    <span class="result-val" style="font-size:.7rem;word-break:break-all;font-family:monospace">${escHtml(link.substring(0,45))}...</span>
-    <button class="copy-btn" onclick="event.stopPropagation();copyText('${encodeURIComponent(link)}',this)" title="Salin ${label}">${SVG.copy}</button>
+function configLink(label, link) {
+  let display = link.length > 60 ? link.substring(0,60)+'...' : link;
+  return `<div class="config-link-row">
+    <span class="config-label">${label}</span>
+    <code class="config-url" title="${escHtml(link)}">${escHtml(display)}</code>
+    <button class="copy-btn" onclick="event.stopPropagation();copyText('${encodeURIComponent(link)}',this)" title="Salin">${SVG.copy}</button>
   </div>`;
 }
 
 function copyAllDetails(btn) {
   let raw = decodeURIComponent(btn.dataset.d);
   let d = JSON.parse(raw);
-  let lines = ['=== Detail Akun VPN ==='];
+  let info = parseLinkInfo(d.link_tls || d.link_config || '');
+  let lines = [];
   lines.push('Username: ' + (d.username||''));
   if(d.tipe) lines.push('Tipe: ' + d.tipe.toUpperCase());
   if(d.is_trial) lines.push('(Trial)');
   if(d.uuid) lines.push('UUID: ' + d.uuid);
   if(d.password) lines.push('Password: ' + d.password);
   if(d.server) lines.push('Server: ' + d.server);
-  lines.push('Masa Aktif: ' + (d.expired||d.masa_aktif||''));
-  if(d.status) lines.push('Status: ' + d.status);
+  if(info.domain) lines.push('Domain: ' + info.domain);
+  if(info.path) lines.push('Path: ' + info.path);
+  lines.push('Expired: ' + (d.expired||d.masa_aktif||''));
   lines.push('');
-  lines.push('--- Config Links ---');
   if(d.link_tls) lines.push('[TLS] ' + d.link_tls);
   if(d.link_nontls) lines.push('[NonTLS] ' + d.link_nontls);
   if(d.link_grpc) lines.push('[gRPC] ' + d.link_grpc);
   const txt = lines.join('\n');
   navigator.clipboard?.writeText(txt).then(() => {
+    btn.innerHTML = SVG.check + ' Tersalin!';
+    setTimeout(() => { btn.innerHTML = SVG.copy + ' Salin Semua Detail'; }, 2000);
+  }).catch(() => {
+    let ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
     btn.innerHTML = SVG.check + ' Tersalin!';
     setTimeout(() => { btn.innerHTML = SVG.copy + ' Salin Semua Detail'; }, 2000);
   });
