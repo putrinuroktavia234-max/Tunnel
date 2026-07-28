@@ -582,11 +582,15 @@ function updateHarga() {
   let diskon = 0;
   let el = document.getElementById('hargaVal');
   if(promoApplied) {
-    if(promoApplied.type==='percent') diskon = Math.floor(h * promoApplied.val / 100);
-    else diskon = promoApplied.val;
-    if(diskon > h) diskon = h;
-    let total = h - diskon;
-    el.innerHTML = '<span style="text-decoration:line-through;color:var(--muted);font-size:.85rem;font-weight:400;margin-right:6px">Rp '+new Intl.NumberFormat('id-ID').format(h)+'</span> Rp '+new Intl.NumberFormat('id-ID').format(total);
+    if(promoApplied.type==='free_account') {
+      el.innerHTML = '<span style="text-decoration:line-through;color:var(--muted);font-size:.85rem;font-weight:400;margin-right:6px">Rp '+new Intl.NumberFormat('id-ID').format(h)+'</span> <span style="color:#10b981;font-weight:700">GRATIS '+promoApplied.free_days+' Hari!</span>';
+    } else {
+      if(promoApplied.type==='percent') diskon = Math.floor(h * promoApplied.val / 100);
+      else diskon = promoApplied.val;
+      if(diskon > h) diskon = h;
+      let total = h - diskon;
+      el.innerHTML = '<span style="text-decoration:line-through;color:var(--muted);font-size:.85rem;font-weight:400;margin-right:6px">Rp '+new Intl.NumberFormat('id-ID').format(h)+'</span> Rp '+new Intl.NumberFormat('id-ID').format(total);
+    }
   } else {
     el.innerHTML = 'Rp '+new Intl.NumberFormat('id-ID').format(h);
   }

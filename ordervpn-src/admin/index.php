@@ -282,14 +282,15 @@ if ($act==='add_server') {
 
     if ($act==='add_promo') {
         $code  = strtoupper(sanitize($_POST['code']??''));
-        $type  = $_POST['discount_type']==='nominal' ? 'nominal' : 'percent';
+        $type  = in_array($_POST['discount_type'],['nominal','percent','free_account']) ? $_POST['discount_type'] : 'percent';
         $value = (int)($_POST['discount_value']??0);
         $max   = (int)($_POST['max_uses']??0);
         $min   = (int)($_POST['min_price']??0);
         $exp   = sanitize($_POST['expires_at']??'');
-        if ($code && $value > 0) {
-            $db->prepare("INSERT INTO promo_codes (code,discount_type,discount_value,max_uses,min_price,expires_at) VALUES (?,?,?,?,?,?)")
-               ->execute([$code,$type,$value,$max,$min,$exp?:null]);
+        $freeDays = ($type==='free_account') ? (int)($_POST['free_days']??7) : null;
+        if ($code && ($value > 0 || $type==='free_account')) {
+            $db->prepare("INSERT INTO promo_codes (code,discount_type,discount_value,max_uses,min_price,expires_at,free_days) VALUES (?,?,?,?,?,?,?)")
+               ->execute([$code,$type,$value,$max,$min,$exp?:null,$freeDays]);
         }
         header('Location: /ordervpn/admin/'); exit;
     }
@@ -988,12 +989,14 @@ $saved   = isset($_GET['saved']);
           <div class="grid2">
             <div class="form-group"><label>Kode Promo</label><input name="code" placeholder="Contoh: HEMAT10" style="text-transform:uppercase;font-family:monospace" required></div>
             <div class="form-group"><label>Jenis Diskon</label>
-              <select name="discount_type">
+              <select name="discount_type" id="promoType" onchange="document.getElementById('freeDaysRow').style.display=this.value==='free_account'?'block':'none';document.getElementById('discValueRow').style.display=this.value==='free_account'?'none':'block'">
                 <option value="percent">Persen (%)</option>
                 <option value="nominal">Nominal (Rp)</option>
+                <option value="free_account">Free Akun (X Hari)</option>
               </select>
             </div>
-            <div class="form-group"><label>Nilai Diskon</label><input name="discount_value" type="number" min="1" placeholder="10 atau 5000" required></div>
+            <div class="form-group" id="discValueRow"><label>Nilai Diskon</label><input name="discount_value" type="number" min="1" placeholder="10 atau 5000"></div>
+            <div class="form-group" id="freeDaysRow" style="display:none"><label>Jumlah Hari Gratis</label><input name="free_days" type="number" min="1" max="30" value="7" placeholder="7"></div>
             <div class="form-group"><label>Maks. Pemakaian (0 = tak terbatas)</label><input name="max_uses" type="number" min="0" value="0"></div>
             <div class="form-group"><label>Min. Pembelian (Rp, 0 = tanpa minimal)</label><input name="min_price" type="number" min="0" value="0"></div>
             <div class="form-group"><label>Berlaku Sampai (kosongkan = tidak ada batas)</label><input name="expires_at" type="date"></div>
@@ -1023,7 +1026,7 @@ $saved   = isset($_GET['saved']);
               ?>
               <tr>
                 <td style="font-family:monospace;font-weight:700;color:var(--warning)"><?=esc($p['code'])?></td>
-                <td><?=$p['discount_type']==='percent' ? $p['discount_value'].'%' : formatRupiah($p['discount_value'])?></td>
+                <td><?=$p['discount_type']==='free_account' ? 'GRATIS '.(int)($p['free_days']??7).' Hari' : ($p['discount_type']==='percent' ? $p['discount_value'].'%' : formatRupiah($p['discount_value']))?></td>
                 <td><?=$p['min_price']>0?formatRupiah($p['min_price']):'-'?></td>
                 <td><?=(int)$p['used_count']?> / <?=$p['max_uses']>0?$p['max_uses']:'&infin;'?></td>
                 <td style="font-size:.75rem"><?=$p['max_uses']>0?$p['max_uses']:'&infin;'?></td>

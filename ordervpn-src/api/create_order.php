@@ -44,10 +44,18 @@ if ($promoCode && !$isTrial) {
         elseif ($promoData['min_price'] > 0 && $harga < (int)$promoData['min_price']) $promoData = null;
     }
     if ($promoData) {
-        if ($promoData['discount_type'] === 'percent') $diskon = (int)($harga * (int)$promoData['discount_value'] / 100);
-        else $diskon = (int)$promoData['discount_value'];
-        if ($diskon > $harga) $diskon = $harga;
-        $harga -= $diskon;
+        if ($promoData['discount_type'] === 'free_account') {
+            $freeDays = (int)($promoData['free_days'] ?? 7);
+            $diskon = $harga;
+            $harga = 0;
+            $days = min($freeDays, 30);
+        } elseif ($promoData['discount_type'] === 'percent') {
+            $diskon = (int)($harga * (int)$promoData['discount_value'] / 100);
+        } else {
+            $diskon = (int)$promoData['discount_value'];
+        }
+        if ($diskon > $harga && $promoData['discount_type'] !== 'free_account') $diskon = $harga;
+        if ($promoData['discount_type'] !== 'free_account') $harga -= $diskon;
     }
 }
 
@@ -59,8 +67,10 @@ if ($isTrial) {
         echo json_encode(['success'=>false,'message'=>'Kamu sudah ambil trial hari ini. Coba lagi besok.']); exit;
     }
     $harga = 0; $days = 1; $isTrial = true;
-} else {
-    // Cek saldo
+}
+
+// Cek saldo (skip kalau gratis: trial atau free_account promo)
+if ($harga > 0) {
     $u = $db->prepare("SELECT saldo FROM users WHERE id=?");
     $u->execute([$userId]); $user = $u->fetch();
     if ((float)$user['saldo'] < $harga) {

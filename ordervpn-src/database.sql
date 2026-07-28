@@ -24,8 +24,9 @@ CREATE TABLE `login_attempts` (
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `promo_codes` (
   `code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `discount_type` enum('percentage','fixed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'percentage',
+  `discount_type` enum('percent','nominal','free_account') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'percent',
   `discount_value` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `free_days` int DEFAULT NULL COMMENT 'Jumlah hari gratis untuk tipe free_account',
   `max_uses` int DEFAULT NULL,
   `min_price` decimal(10,2) DEFAULT '0.00',
   `expires_at` datetime DEFAULT NULL,

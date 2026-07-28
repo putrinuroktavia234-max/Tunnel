@@ -25,9 +25,13 @@ if ($p['max_uses'] > 0 && (int)$p['used_count'] >= (int)$p['max_uses']) {
     echo json_encode(['success'=>false,'message'=>'Kuota pemakaian kode promo sudah habis']); exit;
 }
 
-$label = $p['discount_type']==='percent'
-    ? 'Diskon '.$p['discount_value'].'%'
-    : 'Diskon '.formatRupiah($p['discount_value']);
+if ($p['discount_type']==='free_account') {
+    $label = 'GRATIS '.(int)$p['free_days'].' Hari!';
+} elseif ($p['discount_type']==='percent') {
+    $label = 'Diskon '.$p['discount_value'].'%';
+} else {
+    $label = 'Diskon '.formatRupiah($p['discount_value']);
+}
 
 echo json_encode([
     'success'=>true,
@@ -35,6 +39,7 @@ echo json_encode([
         'code'=>$p['code'],
         'type'=>$p['discount_type'],
         'val'=>(int)$p['discount_value'],
+        'free_days'=>(int)($p['free_days']??0),
         'min_price'=>(int)$p['min_price'],
         'label'=>$label
     ]
