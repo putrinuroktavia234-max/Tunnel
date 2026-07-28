@@ -1,0 +1,130 @@
+YouzinCrabz Tunnel — VPN Panel
+Copyright (c) 2024-2026 The Professor (YouzinCrabz)
+All Rights Reserved.
+
+=======================================================================
+                    PROPRIETARY LICENSE AGREEMENT
+=======================================================================
+
+By downloading, installing, or using this software, you agree to the
+following terms and conditions.
+
+1. DEFINITIONS
+
+   "Software" refers to all files included in this repository, including
+   but not limited to: vpn.sh, ordervpn-src/*, login.php, deploy-node.sh,
+   join.sh, vpn-api.sh, and all associated scripts, code, and assets.
+
+   "Author" refers to The Professor (YouzinCrabz), the creator and
+   copyright holder of this Software.
+
+   "User" refers to any individual or entity who downloads, installs,
+   or uses the Software.
+
+2. GRANTED RIGHTS
+
+   2.1 The User is granted a non-exclusive, non-transferable,
+       revocable license to:
+       (a) Install and run the Software on their own VPS for personal
+           or private use.
+       (b) Modify the Software for their own private use only.
+       (c) Use the Software to manage VPN services on their own
+           infrastructure.
+
+3. RESTRICTED RIGHTS
+
+   3.1 The User is NOT permitted to:
+       (a) Distribute, sublicense, lease, rent, or sell the Software
+           or any derivative works.
+       (b) Redistribute the source code, in whole or in part, through
+           any medium including but not limited to GitHub, forums,
+           blogs, or file-sharing platforms.
+       (c) Use the Software or any derivative works for commercial
+           purposes without prior written consent from the Author.
+       (d) Remove, alter, or obscure any copyright notice, author
+           attribution, or license terms contained in the Software.
+       (e) Reverse engineer, decompile, or disassemble any compiled
+           or obfuscated version of the Software (including but not
+           limited to shc-compiled binaries).
+       (f) Claim ownership or authorship of the Software or any
+           derivative works.
+       (g) Use the Software to harm, exploit, or attack third parties.
+
+4. SOURCE PROTECTION
+
+   4.1 The Author reserves the right to distribute the Software in
+       compiled/obfuscated form (e.g., using shc - Shell Script
+       Compiler) to protect intellectual property.
+
+   4.2 Any attempt to reverse engineer, decompile, or recover the
+       original source code from compiled versions is strictly
+       prohibited and constitutes a violation of this license.
+
+5. COMMERCIAL USE
+
+   5.1 Any use of the Software to generate revenue — including but
+       not limited to selling VPN accounts, charging users for
+       access, bundling with paid services, or offering as a paid
+       managed service — requires explicit written permission from
+       the Author.
+
+   5.2 Requests for commercial licensing should be directed to the
+       Author via the contact information provided in README.md.
+
+6. DISCLAIMER OF WARRANTY
+
+   6.1 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+       KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+       WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+       PURPOSE AND NONINFRINGEMENT.
+
+   6.2 The Author shall not be liable for any damages, losses, or
+       legal issues arising from the use or inability to use the
+       Software, including but not limited to data loss, service
+       interruption, account suspension, or legal action by third
+       parties.
+
+7. INDEMNIFICATION
+
+   7.1 The User assumes full responsibility for the use of the
+       Software and agrees to indemnify and hold harmless the Author
+       from any claims, damages, or liabilities arising from such use.
+
+   7.2 The User is responsible for complying with all applicable
+       local, national, and international laws regarding the use of
+       VPN and tunneling services.
+
+8. TERMINATION
+
+   8.1 This license is effective immediately upon use of the Software
+       and remains in effect until terminated.
+
+   8.2 The Author may terminate this license at any time, for any
+       reason, without notice. Upon termination, the User must:
+       (a) Cease all use of the Software.
+       (b) Destroy all copies of the Software in their possession.
+       (c) Remove the Software from all infrastructure.
+
+9. UPDATES AND MODIFICATIONS
+
+   9.1 The Author reserves the right to update, modify, or
+       discontinue the Software at any time without notice.
+
+   9.2 The Author is not obligated to provide updates, bug fixes,
+       or support for the Software.
+
+10. GOVERNING LAW
+
+    10.1 This license shall be governed by the laws of the Author's
+         jurisdiction. Any disputes shall be resolved in the courts
+         of that jurisdiction.
+
+=======================================================================
+
+For licensing inquiries, commercial use, or permissions:
+  Telegram : @YouzinCrabz
+  GitHub   : https://github.com/putrinuroktavia234-max/Tunnel
+
+=======================================================================
+                    END OF LICENSE AGREEMENT
+=======================================================================
