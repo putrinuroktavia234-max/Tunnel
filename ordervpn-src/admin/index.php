@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if ($req) {
             $db->prepare("UPDATE topup_requests SET status='approved', processed_at=NOW() WHERE id=?")->execute([$tid]);
             $db->prepare("UPDATE users SET saldo=saldo+? WHERE id=?")->execute([$req['amount'],$req['user_id']]);
-            $db->prepare("INSERT INTO transactions (user_id,type,amount,keterangan,status) VALUES (?,?,?,?,'success',this)")
+            $db->prepare("INSERT INTO transactions (user_id,type,amount,keterangan,status) VALUES (?,?,?,?,'success')")
                ->execute([$req['user_id'],'topup',$req['amount'],'Topup disetujui admin']);
             $u=$db->prepare("SELECT username FROM users WHERE id=?");$u->execute([$req['user_id']]);$uname=$u->fetchColumn();
             sendTelegramNotif("Active Topup <b>{$uname}</b> ".formatRupiah($req['amount'])." disetujui");
