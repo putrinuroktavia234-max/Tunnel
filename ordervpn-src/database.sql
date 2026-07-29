@@ -5,7 +5,7 @@
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `app_settings` (
+CREATE TABLE IF NOT EXISTS `app_settings` (
   `id` int NOT NULL AUTO_INCREMENT,
   `setting_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `setting_value` text COLLATE utf8mb4_unicode_ci,
@@ -14,7 +14,7 @@ CREATE TABLE `app_settings` (
   UNIQUE KEY `setting_key` (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `login_attempts` (
+CREATE TABLE IF NOT EXISTS `login_attempts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci NOT NULL,
   `username` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE `login_attempts` (
   KEY `idx_attempted_at` (`attempted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `promo_codes` (
+CREATE TABLE IF NOT EXISTS `promo_codes` (
   `id` int NOT NULL AUTO_INCREMENT,
   `code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `discount_type` enum('percent','nominal','free_account') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'percent',
@@ -41,7 +41,7 @@ CREATE TABLE `promo_codes` (
   UNIQUE KEY `code` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `servers` (
+CREATE TABLE IF NOT EXISTS `servers` (
   `id` int NOT NULL AUTO_INCREMENT,
   `nama_server` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `code_server` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE `servers` (
   UNIQUE KEY `code_server` (`code_server`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `topup_requests` (
+CREATE TABLE IF NOT EXISTS `topup_requests` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
   `amount` decimal(15,2) NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE `topup_requests` (
   CONSTRAINT `topup_requests_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `transactions` (
+CREATE TABLE IF NOT EXISTS `transactions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
   `type` enum('topup','order','refund','trial') COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE `transactions` (
   CONSTRAINT `transactions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` int NOT NULL AUTO_INCREMENT,
   `username` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `email` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `vpn_accounts` (
+CREATE TABLE IF NOT EXISTS `vpn_accounts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
   `server_id` int NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE `vpn_accounts` (
   CONSTRAINT `vpn_accounts_ibfk_2` FOREIGN KEY (`server_id`) REFERENCES `servers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `wildcard_domains` (
+CREATE TABLE IF NOT EXISTS `wildcard_domains` (
   `id` int NOT NULL AUTO_INCREMENT,
   `domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
