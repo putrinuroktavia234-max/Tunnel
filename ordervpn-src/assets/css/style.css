@@ -648,13 +648,22 @@ tbody tr:hover td{background:rgba(99,102,241,0.03)}
 .admin-main{flex:1;padding:1.5rem;overflow-y:auto;min-width:0}
 .badge-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:50px;font-size:.62rem;font-weight:700;background:var(--danger);color:#fff}
 @media(max-width:768px){
-  .admin-sidebar{width:56px;min-width:56px}
-  .admin-sidebar .admin-sidebar-logo span{display:none}
-  .admin-sidebar .admin-sidebar-nav .tab-btn span,
-  .admin-sidebar .admin-sidebar-footer .tab-btn span{display:none}
-  .admin-sidebar .admin-sidebar-nav .tab-btn{justify-content:center;padding:.55rem}
-  .admin-sidebar .admin-sidebar-footer .tab-btn{justify-content:center;padding:.55rem}
-  .admin-main{padding:1rem}
+  .admin-layout{flex-direction:column}
+  .admin-sidebar{width:100%;min-width:100%;height:auto;min-height:auto;position:static;border-right:none;border-bottom:1px solid var(--border);flex-shrink:0}
+  .admin-sidebar-logo{padding:.5rem 1rem;border-bottom:none;flex-shrink:0;justify-content:center}
+  .admin-sidebar-logo span{font-size:.85rem}
+  .admin-sidebar-nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:.4rem .5rem;gap:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .admin-sidebar-nav::-webkit-scrollbar{display:none}
+  .admin-sidebar-nav .tab-btn{flex-shrink:0;white-space:nowrap;padding:.45rem .75rem;font-size:.75rem;border-radius:8px;gap:.35rem}
+  .admin-sidebar-nav .tab-btn svg{width:14px;height:14px}
+  .admin-sidebar-nav .tab-btn span{display:inline!important}
+  .admin-sidebar-footer{flex-direction:row;padding:.4rem .5rem;border-top:none;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .admin-sidebar-footer .tab-btn{flex-shrink:0;white-space:nowrap;padding:.45rem .75rem;font-size:.75rem;border-radius:8px;gap:.35rem;width:auto}
+  .admin-sidebar-footer .tab-btn svg{width:14px;height:14px}
+  .admin-sidebar-footer .tab-btn span{display:inline!important}
+  .admin-sidebar-footer>div{display:none}
+  .admin-main{padding:.75rem}
+  .badge-count{min-width:16px;height:16px;font-size:.58rem}
 }
 
 /* ── PAGE HEADERS ── */
