@@ -9,7 +9,7 @@
 
 ## 🛡️ Security Features
 
-YouzinCrabz Tunnel includes the following security measures:
+OrderVPN includes the following security measures:
 
 ### Web Panel Security
 - **CSRF Protection** — All forms include CSRF token validation
@@ -34,7 +34,7 @@ If you discover a security vulnerability, please **DO NOT** open a public GitHub
 
 ### How to Report
 
-1. **Telegram**: Contact [@YouzinCrabz](https://t.me/YouzinCrabz) privately
+1. **Telegram**: Contact [@OrderVPN](https://t.me/OrderVPN) privately
 2. **GitHub**: Use the [Security Advisories](https://github.com/putrinuroktavia234-max/Tunnel/security/advisories/new) feature
 
 ### What to Include
@@ -74,4 +74,4 @@ Security researchers who responsibly disclose vulnerabilities will be credited h
 
 ---
 
-*Thank you for helping keep YouzinCrabz Tunnel secure.*
+*Thank you for helping keep OrderVPN secure.*

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ YouzinCrabz Tunnel — VPN Panel v3.12
+# 🛡️ OrderVPN — VPN Panel v3.12
 
 ### Multi-Protocol VPN Management System with Web Panel & Multi-VPS Support
 
@@ -37,7 +37,7 @@
 
 ## 🎯 Tentang Project
 
-**YouzinCrabz Tunnel** adalah script auto-install VPN panel all-in-one untuk VPS Ubuntu. Dibuat oleh **The Professor** dengan fokus pada kemudahan, kecepatan, dan tampilan yang rapi (mobile-friendly).
+**OrderVPN** adalah script auto-install VPN panel all-in-one untuk VPS Ubuntu. Dibuat oleh **The Professor** dengan fokus pada kemudahan, kecepatan, dan tampilan yang rapi (mobile-friendly).
 
 Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 
@@ -533,7 +533,7 @@ Project ini menggunakan **Proprietary License** — lihat file [LICENSE](LICENSE
 
 | Platform | Link |
 |----------|------|
-| **Telegram** | [@YouzinCrabz](https://t.me/YouzinCrabz) |
+| **Telegram** | [@OrderVPN](https://t.me/OrderVPN) |
 | **GitHub** | [putrinuroktavia234-max/Tunnel](https://github.com/putrinuroktavia234-max/Tunnel) |
 | **Author** | The Professor |
 
@@ -543,6 +543,6 @@ Project ini menggunakan **Proprietary License** — lihat file [LICENSE](LICENSE
 
 **Made with 💜 by The Professor**
 
-**YouzinCrabz Tunnel v3.12.0** — *Freedom to tunnel.*
+**OrderVPN v3.12.0** — *Freedom to tunnel.*
 
 </div>

@@ -155,3 +155,11 @@ CREATE TABLE `wildcard_domains` (
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Default app settings
+INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`) VALUES
+('app_name', 'OrderVPN'),
+('app_logo', '⚡'),
+('contact_tg', '@ordervpn_admin'),
+('contact_wa', ''),
+('contact_ig', '');

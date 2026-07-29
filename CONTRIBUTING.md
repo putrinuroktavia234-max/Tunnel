@@ -1,6 +1,6 @@
-# 🤝 Contributing to YouzinCrabz Tunnel
+# 🤝 Contributing to OrderVPN
 
-Thank you for your interest in contributing to YouzinCrabz Tunnel! 
+Thank you for your interest in contributing to OrderVPN! 
 
 Since this is a **proprietary project**, contributions are handled differently than typical open-source projects.
 
@@ -39,7 +39,7 @@ See [SECURITY.md](SECURITY.md) for the responsible disclosure process.
 
 This project is **proprietary**. Source code modifications are permitted for personal use only. If you have a fix or improvement:
 
-1. Contact [@YouzinCrabz](https://t.me/YouzinCrabz) on Telegram
+1. Contact [@OrderVPN](https://t.me/OrderVPN) on Telegram
 2. Describe your proposed change
 3. If accepted, you'll be guided on how to submit
 
@@ -132,6 +132,6 @@ See [LICENSE](LICENSE) for full terms.
 
 <div align="center">
 
-Questions? Contact **[@YouzinCrabz](https://t.me/YouzinCrabz)** on Telegram
+Questions? Contact **[@OrderVPN](https://t.me/OrderVPN)** on Telegram
 
 </div>

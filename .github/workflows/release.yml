@@ -1,0 +1,95 @@
+name: Build & Release OrderVPN Web
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'ordervpn-src/**'
+      - 'vpn.sh'
+      - 'build.sh'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version (leave empty to use version from vpn.sh)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from vpn.sh
+        id: version
+        run: |
+          VER=$(grep -oP 'ORDERVPN_VERSION="\K[^"]+' vpn.sh || echo "unknown")
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VER="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Version: v$VER"
+
+      - name: Build tarball
+        run: |
+          chmod +x build.sh
+          bash build.sh
+          echo "Tarball created:"
+          ls -lh ordervpn-src.tar.gz
+
+      - name: Get SHA256
+        id: sha
+        run: |
+          SHA=$(sha256sum ordervpn-src.tar.gz | awk '{print $1}')
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA"
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: OrderVPN Web v${{ steps.version.outputs.version }}
+          body: |
+            ## OrderVPN Web v${{ steps.version.outputs.version }}
+
+            Auto-built from `ordervpn-src/` on push to main.
+
+            ### 🔗 Commit
+            [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### 📦 Asset
+            - `ordervpn-src.tar.gz` — extract to `/var/www/html/ordervpn`
+
+            ### 🔑 SHA256
+            ```
+            ${{ steps.sha.outputs.sha256 }}
+            ```
+
+            ### 🚀 Deploy
+            ```bash
+            # Via VPN script menu 21
+            menu  # lalu pilih 21 (OrderVPN Web)
+
+            # Atau manual
+            wget ${{ github.server_url }}/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/ordervpn-src.tar.gz
+            tar -xzf ordervpn-src.tar.gz -C /var/www/html/ordervpn --strip-components=1
+            ```
+          files: ordervpn-src.tar.gz
+          draft: false
+          prerelease: false
+          make_latest: true
+
+      - name: Commit updated SHA256
+        run: |
+          if git diff --quiet vpn.sh; then
+            echo "No SHA256 change in vpn.sh"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add vpn.sh
+            git commit -m "chore: update ORDERVPN_TAR_SHA256 [skip ci]"
+            git push origin HEAD
+          fi
