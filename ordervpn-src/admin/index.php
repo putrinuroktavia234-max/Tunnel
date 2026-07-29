@@ -351,7 +351,7 @@ $saved   = isset($_GET['saved']);
       </button>
       <button class="tab-btn" onclick="showTab('topup',this)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Topup<?php if($stats['topup_p']>0):?> <span class="badge-count"><?=$stats['topup_p']?></span><?php endif;?>
+        <span>Topup</span><?php if($stats['topup_p']>0):?> <span class="badge-count"><?=$stats['topup_p']?></span><?php endif;?>
       </button>
       <button class="tab-btn active" onclick="showTab('servers',this)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
