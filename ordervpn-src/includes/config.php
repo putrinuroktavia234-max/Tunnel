@@ -175,7 +175,8 @@ function requireLogin() {
             header('Content-Type: application/json');
             echo json_encode(['success'=>false,'message'=>'Unauthorized']); exit;
         }
-        header('Location: /'); exit;
+        $redirect = $_SERVER['REQUEST_URI'] ?? '/ordervpn/dashboard.php';
+        header('Location: /ordervpn/login.php?redirect=' . urlencode($redirect)); exit;
     }
     try {
         $db = getDB();
@@ -190,7 +191,7 @@ function requireLogin() {
 function requireAdmin() {
     $s = requireLogin();
     if (($s['role']??'') !== 'admin') {
-        header('Location: /dashboard.php'); exit;
+        header('Location: /ordervpn/dashboard.php'); exit;
     }
     return $s;
 }

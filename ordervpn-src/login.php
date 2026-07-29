@@ -6,6 +6,11 @@ if (isset($_SESSION['user_id'])) { header('Location: /ordervpn/dashboard.php'); 
 $appName = getSetting('app_name','OrderVPN');
 $error = ''; $success = '';
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+// Hanya izinkan redirect ke path lokal (hindari open redirect)
+$redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
+if (empty($redirect) || $redirect[0] !== '/' || preg_match('#^//|^[a-zA-Z]+://#', $redirect)) {
+    $redirect = '/ordervpn/dashboard.php';
+}
 
 if ($_SERVER['REQUEST_METHOD']==='POST') {
 
@@ -33,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                         $_SESSION['saldo']=$user['saldo'];
                         $ip=$_SERVER['HTTP_X_FORWARDED_FOR']??$_SERVER['REMOTE_ADDR'];
                         $db->prepare("UPDATE users SET ip_address=? WHERE id=?")->execute([$ip,$user['id']]);
-                        header('Location: /ordervpn/dashboard.php'); exit;
+                        header('Location: ' . $redirect); exit;
                     }
                 } else {
                     log_login_attempt('login',false,$u);
