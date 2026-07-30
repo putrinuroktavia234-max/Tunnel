@@ -634,6 +634,7 @@ tbody tr:hover td{background:rgba(99,102,241,0.03)}
 }
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
 
+
 /* ── ADMIN SIDEBAR ── */
 .admin-layout{display:flex;min-height:100vh}
 .admin-sidebar{width:240px;min-width:240px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;position:sticky;top:0;height:100vh}
@@ -647,33 +648,40 @@ tbody tr:hover td{background:rgba(99,102,241,0.03)}
 .admin-sidebar-footer .tab-btn:hover{color:var(--text-secondary);background:rgba(255,255,255,0.04)}
 .admin-main{flex:1;padding:1.5rem;overflow-y:auto;min-width:0}
 .badge-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:50px;font-size:.62rem;font-weight:700;background:var(--danger);color:#fff}
+
+/* ── ADMIN HAMBURGER ── */
+.admin-hamburger{
+  display:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg-card);color:var(--text-secondary);cursor:pointer;
+  align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;
+}
+.admin-hamburger:hover{border-color:var(--accent);color:var(--accent)}
+.admin-topbar{display:none;align-items:center;gap:.75rem;margin-bottom:1rem;min-height:44px}
+.admin-topbar-title{font-size:1rem;font-weight:700}
+.admin-sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199}
+.admin-sidebar-backdrop.show{display:block}
+
 @media(max-width:768px){
-  .admin-layout{flex-direction:column}
-  .admin-sidebar{width:100%;min-width:100%;height:auto;min-height:auto;position:static;border-right:none;border-bottom:1px solid var(--border);flex-shrink:0}
-  .admin-sidebar-logo{padding:.5rem 1rem;border-bottom:none;flex-shrink:0;justify-content:center}
-  .admin-sidebar-logo span{font-size:.85rem}
-  .admin-sidebar-nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;padding:.4rem .5rem;gap:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .admin-sidebar-nav::-webkit-scrollbar{display:none}
-  .admin-sidebar-nav .tab-btn{flex-shrink:0;white-space:nowrap;padding:.45rem .75rem;font-size:.75rem;border-radius:8px;gap:.35rem}
+  .admin-sidebar{position:fixed;z-index:200;transform:translateX(-100%);transition:transform .35s cubic-bezier(.16,1,.3,1);height:100dvh;width:260px;min-width:260px}
+  .admin-sidebar.open{transform:translateX(0)}
+  .admin-sidebar-logo{padding:.6rem .8rem;font-size:.85rem}
+  .admin-sidebar-logo span{font-size:.82rem}
+  .admin-sidebar-nav{padding:.5rem}
+  .admin-sidebar-nav .tab-btn{padding:.45rem .65rem;font-size:.75rem}
   .admin-sidebar-nav .tab-btn svg{width:14px;height:14px}
-  .admin-sidebar-nav .tab-btn span{display:inline!important}
-  .admin-sidebar-footer{flex-direction:row;padding:.4rem .5rem;border-top:none;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .admin-sidebar-footer .tab-btn{flex-shrink:0;white-space:nowrap;padding:.45rem .75rem;font-size:.75rem;border-radius:8px;gap:.35rem;width:auto}
+  .admin-sidebar-footer{padding:.5rem}
+  .admin-sidebar-footer .tab-btn{padding:.4rem .6rem;font-size:.75rem}
   .admin-sidebar-footer .tab-btn svg{width:14px;height:14px}
-  .admin-sidebar-footer .tab-btn span{display:inline!important}
   .admin-sidebar-footer>div{display:none}
-  .admin-main{padding:.75rem}
+  .admin-main{padding:.75rem;width:100%}
+  .admin-hamburger{display:flex}
+  .admin-topbar{display:flex}
   .badge-count{min-width:16px;height:16px;font-size:.58rem}
 }
+@media(min-width:769px){
+  .admin-sidebar-backdrop{display:none!important}
+}
 
-/* ── PAGE HEADERS ── */
-.page-header{font-size:1.1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem}
-
-/* ── UTILITIES ── */
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
-.flex{display:flex}
-.flex-center{align-items:center;justify-content:center}
 .flex-between{display:flex;align-items:center;justify-content:space-between}
 .gap-0\.5{gap:.5rem};.gap-1{gap:1rem}
 .mt-1{margin-top:1rem}.mt-2{margin-top:2rem}
