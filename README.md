@@ -43,7 +43,7 @@ Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 
 | Komponen | Fungsi |
 |----------|--------|
-| **vpn.sh** | Script utama — CLI menu interaktif dengan 24+ menu |
+| **vpn.bin** | Binary compiled — CLI menu interaktif dengan 24+ menu (anti-tamper) |
 | **OrderVPN Web Panel** | Web panel PHP untuk jualan VPN online (auto-order, topup, trial) |
 | **Multi-VPS Bridge** | Sistem untuk menghubungkan banyak VPS ke panel utama |
 
@@ -136,7 +136,7 @@ Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 ### Metode 1: One-Liner (Recommended)
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/vpn.sh)
+sudo curl -fsSL https://github.com/putrinuroktavia234-max/Tunnel/raw/main/vpn.bin -o /usr/local/bin/vpn && sudo chmod +x /usr/local/bin/vpn && sudo vpn
 ```
 
 ### Metode 2: Manual Clone
@@ -144,15 +144,16 @@ bash <(curl -sL https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/
 ```bash
 git clone https://github.com/putrinuroktavia234-max/Tunnel.git
 cd Tunnel
-chmod +x vpn.sh
-bash vpn.sh
+chmod +x vpn.bin
+sudo ./vpn.bin
 ```
 
 ### Metode 3: Download Langsung
 
 ```bash
-wget -O vpn.sh https://raw.githubusercontent.com/putrinuroktavia234-max/Tunnel/main/vpn.sh
-bash vpn.sh
+wget -O vpn.bin https://github.com/putrinuroktavia234-max/Tunnel/raw/main/vpn.bin
+chmod +x vpn.bin
+sudo ./vpn.bin
 ```
 
 ### Alur Instalasi Otomatis
@@ -174,7 +175,9 @@ bash vpn.sh
 └─────────────────────────────────────────────────────┘
 ```
 
-> ✅ Setelah instalasi selesai, menu panel **otomatis muncul** setiap kali Anda login SSH sebagai root. Ketik `menu` untuk membuka kembali.
+> ✅ Setelah instalasi selesai, menu panel **otomatis muncul** setiap kali Anda login SSH sebagai root. Ketik `vpn` atau `menu` untuk membuka kembali.
+>
+> 🔐 **vpn.bin** adalah binary compiled dengan proteksi anti-tamper (C wrapper + zlib + integrity check). Source code tidak bisa dibaca/diedit.
 
 ---
 
@@ -458,7 +461,7 @@ apt update && apt upgrade -y
 
 ```
 Tunnel/
-├── vpn.sh                          # Script utama (CLI panel, 28K+ baris)
+├── vpn.bin                         # Binary utama (CLI panel, compiled + anti-tamper)
 ├── login.php                       # Halaman login OrderVPN
 ├── LICENSE                         # License file
 ├── README.md                       # File ini
