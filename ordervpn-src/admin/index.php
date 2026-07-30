@@ -339,7 +339,8 @@ $saved   = isset($_GET['saved']);
 </head>
 <body>
 <div class="admin-layout">
-  <aside class="admin-sidebar">
+  <aside class="admin-sidebar" id="adminSidebar">
+    <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop" onclick="toggleAdminSidebar()"></div>
     <div class="admin-sidebar-logo">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
       <span><?=$appName?> <span class="admin-badge">Admin</span></span>
@@ -408,6 +409,10 @@ $saved   = isset($_GET['saved']);
     </div>
   </aside>
   <main class="admin-main">
+  <div class="admin-topbar">
+    <button class="admin-hamburger" onclick="toggleAdminSidebar()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+    <span class="admin-topbar-title">Admin Panel</span>
+  </div>
 
 <div class="content">
   <?php if($saved):?><div class="alert alert-success">
