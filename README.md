@@ -135,20 +135,22 @@ Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 
 ### Protected binary (Recommended)
 
-Installer publik dibagikan sebagai **GitHub Release asset**. Buka halaman
-[Releases](https://github.com/putrinuroktavia234-max/Tunnel/releases) dan gunakan versi
-release yang tersedia. Pastikan release tersebut memiliki asset `vpn` dan `vpn.sha256`.
-
-Ganti `VERSION` dengan tag release yang dipilih, tanpa awalan `v`:
+Installer publik dibagikan sebagai **GitHub Release asset**. Perintah berikut
+selalu mengambil release terbaru secara otomatis, sehingga pengguna tidak perlu
+memasukkan atau mengganti nomor versi. Pastikan release terbaru memiliki asset
+`vpn` dan `vpn.sha256`.
 
 ```bash
-VERSION="RELEASE_VERSION"
-curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/download/v${VERSION}/vpn" -o /tmp/vpn
-curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/download/v${VERSION}/vpn.sha256" -o /tmp/vpn.sha256
+curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/latest/download/vpn" -o /tmp/vpn
+curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/latest/download/vpn.sha256" -o /tmp/vpn.sha256
 (cd /tmp && sha256sum -c vpn.sha256)
 chmod +x /tmp/vpn
 sudo /tmp/vpn
 ```
+
+Link `/releases/latest/download/` akan mengikuti release publik terbaru di GitHub.
+Jika asset belum tersedia pada release terbaru, tunggu sampai protected release
+selesai dipublikasikan atau gunakan [halaman Releases](https://github.com/putrinuroktavia234-max/Tunnel/releases).
 
 Tidak diperlukan password, whitelist IP, atau kode aktivasi. Binary akan memasang
 shortcut `/usr/local/bin/vpn` dan `menu` seperti instalasi normal.
@@ -157,9 +159,6 @@ shortcut `/usr/local/bin/vpn` dan `menu` seperti instalasi normal.
 > menggunakan link raw `vpn.sh`; gunakan binary release `vpn` agar source tetap terlindungi.
 > Protected binary menyulitkan pembacaan kasual, tetapi bukan perlindungan absolut dari
 > administrator/root yang mengendalikan VPS.
-
-Jika halaman Releases belum memiliki asset `vpn`, tunggu sampai protected release
-tersedia atau hubungi maintainer repository.
 
 <a id="protected-build"></a>
 
