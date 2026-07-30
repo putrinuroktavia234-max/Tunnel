@@ -43,7 +43,7 @@ Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 
 | Komponen | Fungsi |
 |----------|--------|
-| **vpn.bin** | Binary compiled — CLI menu interaktif dengan 24+ menu (anti-tamper) |
+| **vpn** | Protected Linux binary — CLI menu interaktif dengan 24+ menu |
 | **OrderVPN Web Panel** | Web panel PHP untuk jualan VPN online (auto-order, topup, trial) |
 | **Multi-VPS Bridge** | Sistem untuk menghubungkan banyak VPS ke panel utama |
 
@@ -133,28 +133,41 @@ Script ini menggabungkan **3 komponen utama** dalam satu kesatuan:
 
 ## 🚀 Instalasi
 
-### Metode 1: One-Liner (Recommended)
+### Protected binary (Recommended)
+
+Installer publik dibagikan sebagai **GitHub Release asset**. Buka halaman
+[Releases](https://github.com/putrinuroktavia234-max/Tunnel/releases) dan gunakan versi
+release yang tersedia. Pastikan release tersebut memiliki asset `vpn` dan `vpn.sha256`.
+
+Ganti `VERSION` dengan tag release yang dipilih, tanpa awalan `v`:
 
 ```bash
-sudo curl -fsSL https://github.com/putrinuroktavia234-max/Tunnel/raw/main/vpn.bin -o /usr/local/bin/vpn && sudo chmod +x /usr/local/bin/vpn && sudo vpn
+VERSION="RELEASE_VERSION"
+curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/download/v${VERSION}/vpn" -o /tmp/vpn
+curl -fsSL "https://github.com/putrinuroktavia234-max/Tunnel/releases/download/v${VERSION}/vpn.sha256" -o /tmp/vpn.sha256
+(cd /tmp && sha256sum -c vpn.sha256)
+chmod +x /tmp/vpn
+sudo /tmp/vpn
 ```
 
-### Metode 2: Manual Clone
+Tidak diperlukan password, whitelist IP, atau kode aktivasi. Binary akan memasang
+shortcut `/usr/local/bin/vpn` dan `menu` seperti instalasi normal.
 
-```bash
-git clone https://github.com/putrinuroktavia234-max/Tunnel.git
-cd Tunnel
-chmod +x vpn.bin
-sudo ./vpn.bin
-```
+> Source installer tidak disimpan di repository public ini. Jangan mencari atau
+> menggunakan link raw `vpn.sh`; gunakan binary release `vpn` agar source tetap terlindungi.
+> Protected binary menyulitkan pembacaan kasual, tetapi bukan perlindungan absolut dari
+> administrator/root yang mengendalikan VPS.
 
-### Metode 3: Download Langsung
+Jika halaman Releases belum memiliki asset `vpn`, tunggu sampai protected release
+tersedia atau hubungi maintainer repository.
 
-```bash
-wget -O vpn.bin https://github.com/putrinuroktavia234-max/Tunnel/raw/main/vpn.bin
-chmod +x vpn.bin
-sudo ./vpn.bin
-```
+<a id="protected-build"></a>
+
+### Catatan protected build
+
+Source installer dikelola di repository private. Repository public ini hanya digunakan
+untuk dokumentasi dan distribusi release. Proses build menghasilkan binary `vpn` dan
+checksum `vpn.sha256`; source tidak perlu di-download oleh pengguna.
 
 ### Alur Instalasi Otomatis
 
@@ -177,7 +190,9 @@ sudo ./vpn.bin
 
 > ✅ Setelah instalasi selesai, menu panel **otomatis muncul** setiap kali Anda login SSH sebagai root. Ketik `vpn` atau `menu` untuk membuka kembali.
 >
-> 🔐 **vpn.bin** adalah binary compiled dengan proteksi anti-tamper (C wrapper + zlib + integrity check). Source code tidak bisa dibaca/diedit.
+> 🔐 Binary protected menggunakan payload terenkripsi AES-GCM dan dijalankan melalui
+> Bash tanpa menyimpan source sebagai `/root/vpn.sh`. Ini menghambat pembacaan kasual,
+> tetapi bukan perlindungan absolut terhadap administrator/root yang mengendalikan VPS.
 
 ---
 
@@ -232,7 +247,7 @@ Script memiliki **24 menu utama** yang dibagi dalam beberapa kategori:
 
 ## 🌐 OrderVPN Web Panel
 
-OrderVPN adalah **web panel PHP** untuk menjual akun VPN secara online. Terintegrasi langsung dengan vpn.sh.
+OrderVPN adalah **web panel PHP** untuk menjual akun VPN secara online. Terintegrasi langsung dengan core VPN.
 
 ### Fitur Web Panel
 
@@ -263,7 +278,7 @@ OrderVPN adalah **web panel PHP** untuk menjual akun VPN secara online. Terinteg
 
 ### Cara Deploy
 
-1. Pastikan vpn.sh sudah terinstall
+1. Pastikan protected binary `vpn` sudah terinstall
 2. Buka menu **`21`** → **OrderVPN Web**
 3. Ikuti wizard setup:
    - Setup domain web (custom / auto-generate / pakai domain utama)
@@ -355,7 +370,7 @@ Script mendukung **multi-VPS** — hubungkan banyak VPS ke panel utama (master).
 ```
 ┌─────────────────────┐
 │   MASTER VPS        │
-│  (vpn.sh + Web)     │
+│  (vpn binary + Web) │
 │                     │
 │  ┌───────────────┐  │
 │  │ OrderVPN Web  │  │
@@ -457,17 +472,21 @@ apt update && apt upgrade -y
 
 <a id="struktur-project"></a>
 
-## 📁 Struktur Project
+## 📁 Struktur Project Public
+
+Repository public ini berisi dokumentasi, konfigurasi distribusi, dan source web panel.
+Source installer utama disimpan terpisah di repository private dan tidak ditampilkan di
+struktur public.
 
 ```
 Tunnel/
-├── vpn.bin                         # Binary utama (CLI panel, compiled + anti-tamper)
-├── login.php                       # Halaman login OrderVPN
+├── README.md                       # Dokumentasi pengguna
 ├── LICENSE                         # License file
-├── README.md                       # File ini
 ├── SECURITY.md                     # Security policy
 ├── CONTRIBUTING.md                 # Panduan kontribusi
 ├── .gitignore                      # Git ignore rules
+├── .github/workflows/              # Workflow protected release
+├── login.php                       # Halaman login OrderVPN
 │
 └── ordervpn-src/                   # OrderVPN Web Panel
     ├── index.php                   # Landing page
@@ -476,36 +495,17 @@ Tunnel/
     ├── change_password.php         # Ganti password
     ├── database.sql                # Schema database MySQL
     ├── join.sh                     # Script join VPS ke master
-    ├── deploy-node.sh              # Deploy VPN node (dipanggil join.sh)
+    ├── deploy-node.sh              # Deploy VPN node
     ├── vpn-api.sh                  # API bridge untuk VPS node
-    │
-    ├── includes/
-    │   ├── config.php              # Konfigurasi DB, fungsi helper, Telegram notif
-    │   ├── vpn_manager.php         # Class VPNManager (create/delete via SSH/local)
-    │   └── security.php            # CSRF, rate limiting
-    │
-    ├── api/                        # API endpoints (AJAX)
-    │   ├── create_order.php        # Buat order akun VPN
-    │   ├── topup.php               # Request topup saldo
-    │   ├── check_promo.php         # Validasi kode promo
-    │   ├── get_bridge.php          # Download vpn-api bridge
-    │   ├── register_vps.php        # Register/heartbeat VPS node
-    │   ├── update_profile.php      # Update profil user
-    │   ├── upload_avatar.php       # Upload avatar
-    │   ├── delete_avatar.php       # Hapus avatar
-    │   ├── delete_account.php      # Hapus akun user
-    │   └── logout.php              # Logout
-    │
-    ├── admin/
-    │   └── index.php               # Admin panel (kelola server, user, topup, settings)
-    │
-    ├── cron/
-    │   └── expire_accounts.php     # Cron job: expire akun yang lewat masa aktif
-    │
-    └── assets/
-        └── css/
-            └── style.css           # Stylesheet web panel
+    ├── includes/                   # Konfigurasi dan helper PHP
+    ├── api/                        # API endpoints
+    ├── admin/                      # Admin panel
+    ├── cron/                       # Scheduled jobs
+    └── assets/                     # CSS dan aset web
 ```
+
+Protected build dan source installer dikelola secara terpisah oleh maintainer; pengguna
+cukup mengunduh binary `vpn` dari halaman [Releases](https://github.com/putrinuroktavia234-max/Tunnel/releases).
 
 ---
 
