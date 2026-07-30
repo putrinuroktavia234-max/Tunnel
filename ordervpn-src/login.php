@@ -49,47 +49,44 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
 
     if ($action==='register') {
-        $u=sanitize($_POST['reg_username']??'');
         $e=sanitize($_POST['reg_email']??'');
         $p=$_POST['reg_password']??'';
         $c=$_POST['reg_confirm']??'';
-        if (empty($u)||empty($e)||empty($p)) { $error='Semua field wajib diisi!'; }
+        if (empty($e)||empty($p)) { $error='Email dan password wajib diisi!'; }
         elseif ($p!==$c) { $error='Password tidak cocok!'; }
         elseif (strlen($p)<6) { $error='Password minimal 6 karakter!'; }
         elseif (!filter_var($e,FILTER_VALIDATE_EMAIL)) { $error='Format email tidak valid!'; }
         else {
             $db=getDB();
-            $chk=$db->prepare("SELECT id FROM users WHERE username=? OR email=?");
-            $chk->execute([$u,$e]);
-            if ($chk->fetch()) { $error='Username atau email sudah digunakan!'; }
+            // Auto-generate username dari email
+            $u = strstr($e, '@', true);
+            $base = $u;
+            $suffix = 1;
+            while (true) {
+                $chk = $db->prepare("SELECT id FROM users WHERE username=?");
+                $chk->execute([$u]);
+                if (!$chk->fetch()) break;
+                $u = $base . $suffix;
+                $suffix++;
+            }
+            $chk=$db->prepare("SELECT id FROM users WHERE email=?");
+            $chk->execute([$e]);
+            if ($chk->fetch()) { $error='Email sudah terdaftar! Gunakan email lain.'; }
             else {
-                $otp = str_pad(random_int(0,999999),6,'0',STR_PAD_LEFT);
-                $otpExp = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $hash = password_hash($p, PASSWORD_BCRYPT);
-    try {
-        $db->prepare("INSERT INTO users (username,email,password,otp_code,otp_expires,is_verified) VALUES (?,?,?,?,?,0)")
-           ->execute([$u,$e,$hash,$otp,$otpExp]);
-    } catch (PDOException $e) {
-        if ($e->getCode() == 23000) {
-            $error = "Username atau email sudah terdaftar! Gunakan yang lain.";
-        } else {
-            throw $e;
-        }
-    }
-
-                $emailBody = "
-                <div style='font-family:sans-serif;max-width:480px;margin:0 auto;background:#0f172a;color:#f1f5f9;padding:32px;border-radius:16px;'>
-                  <h2 style='color:#60a5fa;margin-bottom:8px;'>&#9889; {$appName}</h2>
-                  <p style='color:#94a3b8;'>Verifikasi akun kamu</p>
-                  <div style='background:#1e293b;border-radius:12px;padding:24px;margin:24px 0;text-align:center;'>
-                    <p style='color:#94a3b8;font-size:14px;margin-bottom:8px;'>Kode OTP kamu:</p>
-                    <div style='font-size:40px;font-weight:800;letter-spacing:12px;color:#60a5fa;'>{$otp}</div>
-                    <p style='color:#475569;font-size:12px;margin-top:12px;'>Berlaku 15 menit</p>
-                  </div>
-                  <p style='color:#64748b;font-size:12px;'>Jika kamu tidak mendaftar, abaikan email ini.</p>
-                </div>";
-                sendEmail($e, "Kode OTP Verifikasi - {$appName}", $emailBody);
-                $success='Akun berhasil dibuat! Cek email untuk kode OTP verifikasi.';
+                try {
+                    $db->prepare("INSERT INTO users (username,email,password,is_verified) VALUES (?,?,?,1)")
+                       ->execute([$u,$e,$hash]);
+                } catch (PDOException $e) {
+                    if ($e->getCode() == 23000) {
+                        $error = "Email sudah terdaftar! Gunakan email lain.";
+                    } else {
+                        throw $e;
+                    }
+                }
+                if (empty($error)) {
+                    $success='Akun berhasil dibuat! Silakan login dengan email dan password kamu.';
+                }
             }
         }
     }
@@ -278,7 +275,6 @@ input::placeholder{color:#334155}
     <div class="tab-content" id="tab-register">
       <form method="POST" id="regForm">
         <input type="hidden" name="action" value="register">
-        <div class="form-group"><label>Username</label><input type="text" name="reg_username" placeholder="Buat username unik" required autocomplete="username"></div>
         <div class="form-group"><label>Email</label><input type="email" name="reg_email" id="regEmail" placeholder="email@kamu.com" required autocomplete="email"></div>
         <div class="form-group"><label>Password</label><input type="password" name="reg_password" placeholder="Minimal 6 karakter" required autocomplete="new-password"></div>
         <div class="form-group"><label>Konfirmasi Password</label><input type="password" name="reg_confirm" placeholder="Ulangi password" required autocomplete="new-password"></div>
