@@ -7,6 +7,13 @@ if (!isset($_SESSION['user_id'])) {
 
 $msg = ''; $msg_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $role_stmt = getDB()->prepare('SELECT role FROM users WHERE id = ?');
+    $role_stmt->execute([$_SESSION['user_id']]);
+    $current_role = $role_stmt->fetchColumn();
+    if ($current_role === 'admin') {
+        $msg = 'Password admin harus diganti melalui Menu 21 agar informasi password tetap sinkron.';
+        $msg_type = 'error';
+    } else {
     $old_pass = $_POST['old_password'] ?? '';
     $new_pass = $_POST['new_password'] ?? '';
     $confirm  = $_POST['confirm_password'] ?? '';
@@ -37,12 +44,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg_type = 'error';
         }
     }
+    }
 }
 
 $db = getDB();
 $stmt = $db->prepare('SELECT username, email, role FROM users WHERE id = ?');
-$stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt->execute([$_SESSION['user_id']]);$user = $stmt->fetch(PDO::FETCH_ASSOC);
+if (($user['role'] ?? '') === 'admin' && !$msg) {
+    $msg = 'Password admin harus diganti melalui Menu 21 agar informasi password tetap sinkron.';
+    $msg_type = 'error';
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -115,6 +127,7 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
         </div>
         <?php endif; ?>
         
+        <?php if (($user['role'] ?? '') !== 'admin'): ?>
         <form method="POST">
             <div class="form-group">
                 <label>Password Lama</label>
@@ -130,6 +143,7 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
             </div>
             <button type="submit" class="btn">Save New Password</button>
         </form>
+        <?php endif; ?>
         
         <a href="admin/" class="back-link">Back to Dashboard</a>
     </div>

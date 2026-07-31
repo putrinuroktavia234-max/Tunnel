@@ -12,7 +12,13 @@ database=$db
 CNF
     chmod 600 "$f"
     shift 3
-    mysql --defaults-extra-file="$f" "$@"
+    local client="mysql"
+    command -v mysql >/dev/null 2>&1 || client="mariadb"
+    if ! command -v "$client" >/dev/null 2>&1; then
+        rm -f "$f"
+        return 127
+    fi
+    "$client" --defaults-extra-file="$f" "$@"
     rc=$?
     rm -f "$f"
     return $rc
@@ -195,7 +201,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.3"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="e07a72b60e44c51f388978914f13d956710caf8807dfb5a9a2fbbc72dc491842"
+ORDERVPN_TAR_SHA256="f72e9789aeb19c50e3bb2cb16e3c77237e4cf7de8d8a83d066ec30a2270890c5"
 
 
 
@@ -27901,10 +27907,14 @@ _ordervpn_download_web() {
     local script_dir
     script_dir=$(dirname "$(realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")
     local local_tar="${script_dir}/ordervpn-src.tar.gz"
+    local staged_tar="${ORDERVPN_STAGED_TAR:-}"
 
     rm -f "$tmp"
 
-    if [[ -f "$local_tar" ]]; then
+    if [[ -n "$staged_tar" && -f "$staged_tar" ]]; then
+        cp "$staged_tar" "$tmp"
+        echo -e "  ${GREEN}  Menggunakan arsip staging yang sudah diverifikasi${NC}"
+    elif [[ -f "$local_tar" ]]; then
         cp "$local_tar" "$tmp"
         echo -e "  ${GREEN}  Menggunakan tarball lokal${NC}"
     elif [[ -d "${script_dir}/ordervpn-src" ]]; then
@@ -27954,6 +27964,12 @@ _ordervpn_download_web() {
             return 1
         fi
         echo -e "  ${GREEN}  Hash SHA256 cocok${NC}"
+    fi
+
+    # Mode staging hanya mengunduh dan memverifikasi arsip; jangan sentuh
+    # folder web lama sampai fresh reset siap dijalankan.
+    if [[ "${1:-}" == "--download-only" ]]; then
+        return 0
     fi
 
     local env_backup=""
@@ -28027,11 +28043,20 @@ _ordervpn_setup_db() {
 
     # ── Start service & tunggu siap ──
     systemctl start mysql 2>/dev/null || systemctl start mariadb 2>/dev/null || true
+
+    # Normalisasi client MySQL/MariaDB. Sebagian distro hanya menyediakan
+    # binary `mariadb`; gunakan variabel lokal agar tidak meninggalkan fungsi
+    # global yang mengganggu pemanggilan database setelah setup selesai.
+    local _db_client="mysql" _db_admin_client="mysqladmin"
+    if ! command -v mysql >/dev/null 2>&1 && command -v mariadb >/dev/null 2>&1; then
+        _db_client="mariadb"
+        _db_admin_client="mariadb-admin"
+    fi
+
     # Tunggu service benar-benar ready (max 15 detik)
     local _db_retry=0
     while [[ $_db_retry -lt 15 ]]; do
-        if mysqladmin ping --silent 2>/dev/null; then break; fi
-        if mariadb-admin ping --silent 2>/dev/null; then break; fi
+        if "$_db_admin_client" ping --silent 2>/dev/null; then break; fi
         sleep 1; ((_db_retry++))
     done
 
@@ -28040,8 +28065,8 @@ _ordervpn_setup_db() {
 
     # ── Metode 1: debian.cnf ──
     if [[ -f /etc/mysql/debian.cnf ]]; then
-        if mysql --defaults-file=/etc/mysql/debian.cnf -e "SELECT 1" >/dev/null 2>&1; then
-            mysql_cmd="mysql --defaults-file=/etc/mysql/debian.cnf"
+        if "$_db_client" --defaults-file=/etc/mysql/debian.cnf -e "SELECT 1" >/dev/null 2>&1; then
+            mysql_cmd="$_db_client --defaults-file=/etc/mysql/debian.cnf"
         else
             echo -e "  ${YELLOW}⚠ debian.cnf invalid — coba metode lain...${NC}"
         fi
@@ -28049,26 +28074,26 @@ _ordervpn_setup_db() {
 
     # ── Metode 2: root via unix_socket (default Ubuntu 20+) ──
     if [[ -z "$mysql_cmd" ]]; then
-        if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
-            mysql_cmd="mysql -u root"
+        if "$_db_client" -u root -e "SELECT 1" >/dev/null 2>&1; then
+            mysql_cmd="$_db_client -u root"
         fi
     fi
 
     # ── Metode 3: sudo mysql -u root ──
     if [[ -z "$mysql_cmd" ]]; then
-        if sudo mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
-            mysql_cmd="sudo mysql -u root"
+        if sudo "$_db_client" -u root -e "SELECT 1" >/dev/null 2>&1; then
+            mysql_cmd="sudo $_db_client -u root"
         fi
     fi
 
     # ── Metode 4: explicit socket path ──
     if [[ -z "$mysql_cmd" ]]; then
         local _sock
-        _sock=$(mysql --help 2>/dev/null | grep -oP 'socket\s+\K\S+' | head -1)
+        _sock=$("$_db_client" --help 2>/dev/null | grep -oP 'socket\s+\K\S+' | head -1)
         [[ -z "$_sock" ]] && _sock="/var/run/mysqld/mysqld.sock"
         if [[ -S "$_sock" ]]; then
-            if mysql -u root --socket="$_sock" -e "SELECT 1" >/dev/null 2>&1; then
-                mysql_cmd="mysql -u root --socket=$_sock"
+            if "$_db_client" -u root --socket="$_sock" -e "SELECT 1" >/dev/null 2>&1; then
+                mysql_cmd="$_db_client -u root --socket=$_sock"
             fi
         fi
     fi
@@ -28076,8 +28101,8 @@ _ordervpn_setup_db() {
     # ── Metode 5: coba password umum (root, admin, kosong) ──
     if [[ -z "$mysql_cmd" ]]; then
         for _trypass in "root" "admin" "password"; do
-            if mysql -u root -p"${_trypass}" -e "SELECT 1" >/dev/null 2>&1; then
-                mysql_cmd="mysql -u root -p${_trypass}"
+            if "$_db_client" -u root -p"${_trypass}" -e "SELECT 1" >/dev/null 2>&1; then
+                mysql_cmd="$_db_client -u root -p${_trypass}"
                 break
             fi
         done
@@ -28103,9 +28128,9 @@ _ordervpn_setup_db() {
             sleep 3
             # Coba connect
             local _reset_ok=0
-            if mysql -u root --socket=/tmp/mysql_reset.sock -e "SELECT 1" >/dev/null 2>&1; then
+            if "$_db_client" -u root --socket=/tmp/mysql_reset.sock -e "SELECT 1" >/dev/null 2>&1; then
                 # Reset root password & auth (kompatibel MySQL 5.7+ dan MariaDB)
-                mysql -u root --socket=/tmp/mysql_reset.sock <<EORESET
+                "$_db_client" -u root --socket=/tmp/mysql_reset.sock <<EORESET
 FLUSH PRIVILEGES;
 UPDATE mysql.user SET plugin='mysql_native_password', authentication_string='' WHERE User='root' AND Host='localhost';
 FLUSH PRIVILEGES;
@@ -28120,8 +28145,8 @@ EORESET
             sleep 3
             # Coba lagi
             if [[ $_reset_ok -eq 1 ]]; then
-                if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
-                    mysql_cmd="mysql -u root"
+                if "$_db_client" -u root -e "SELECT 1" >/dev/null 2>&1; then
+                    mysql_cmd="$_db_client -u root"
                     echo -e "  ${GREEN}✔ Root password berhasil di-reset!${NC}"
                     echo -e "  ${YELLOW}⚠ MySQL root password KOSONG! Jalankan: mysql_secure_installation${NC}"
                 fi
@@ -28133,10 +28158,10 @@ EORESET
     if [[ -z "$mysql_cmd" ]]; then
         echo -e "  ${RED}✘ Gagal akses MySQL root setelah 7 metode!${NC}"
         echo -e "  ${YELLOW}  Diagnostics:${NC}"
-        echo -e "  ${DIM}  mysql bin   : $(which mysql 2>/dev/null || echo 'NOT FOUND')${NC}"
-        echo -e "  ${DIM}  mysql versi : $(mysql --version 2>/dev/null || echo 'N/A')${NC}"
+        echo -e "  ${DIM}  mysql bin   : $(command -v "$_db_client" 2>/dev/null || echo 'NOT FOUND')${NC}"
+        echo -e "  ${DIM}  mysql versi : $("$_db_client" --version 2>/dev/null || echo 'N/A')${NC}"
         echo -e "  ${DIM}  service     : $(systemctl is-active mysql 2>/dev/null || systemctl is-active mariadb 2>/dev/null || echo 'inactive')${NC}"
-        _err_out=$(mysql -u root -e "SELECT 1" 2>&1 | head -3)
+        _err_out=$("$_db_client" -u root -e "SELECT 1" 2>&1 | head -3)
         echo -e "  ${DIM}  mysql error : ${_err_out}${NC}"
         echo -e "  ${YELLOW}  Coba manual: mysql_secure_installation${NC}"
         return 1
@@ -28205,10 +28230,24 @@ DB_NAME=${db_name}
 EOENV
     chmod 600 /var/www/html/ordervpn/.env
     chown www-data:www-data /var/www/html/ordervpn/.env
+    local schema_file=""
     if [[ -f "/var/www/html/ordervpn/install.sql" ]]; then
-        $mysql_cmd "${db_name}" < /var/www/html/ordervpn/install.sql
+        schema_file="/var/www/html/ordervpn/install.sql"
     elif [[ -f "/var/www/html/ordervpn/database.sql" ]]; then
-        $mysql_cmd "${db_name}" < /var/www/html/ordervpn/database.sql
+        schema_file="/var/www/html/ordervpn/database.sql"
+    fi
+    if [[ -n "$schema_file" ]]; then
+        if ! $mysql_cmd "${db_name}" < "$schema_file"; then
+            echo -e "  ${RED}✘ Gagal mengimpor schema database: ${schema_file}${NC}"
+            $mysql_cmd -e "DROP DATABASE IF EXISTS \`${db_name}\`; DROP USER IF EXISTS '${db_user}'@'localhost'; FLUSH PRIVILEGES;" 2>/dev/null || true
+            rm -f /var/www/html/ordervpn/.env /root/.ordervpn_db
+            return 1
+        fi
+    else
+        echo -e "  ${RED}✘ File schema database tidak ditemukan.${NC}"
+        $mysql_cmd -e "DROP DATABASE IF EXISTS \`${db_name}\`; DROP USER IF EXISTS '${db_user}'@'localhost'; FLUSH PRIVILEGES;" 2>/dev/null || true
+        rm -f /var/www/html/ordervpn/.env /root/.ordervpn_db
+        return 1
     fi
     cat > /root/.ordervpn_db <<EODB
 DB_USER=${db_user}
@@ -28226,15 +28265,24 @@ EODB
     if [[ -z "$admin_pass" ]]; then
         admin_pass=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 12)
         admin_pass="${admin_pass}@A1"  # guaranteed special char + upper + digit
-        echo "$admin_pass" > /root/.ordervpn_admin
-        chmod 600 /root/.ordervpn_admin
     fi
     local ADMIN_HASH
     ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
     if [[ -n "$ADMIN_HASH" ]]; then
         local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
-        _mysql_exec "$db_user" "$db_pass" "$db_name" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', 'admin@ordervpn.local', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null || true
-        echo -e "  ${GREEN}  Admin: admin / ${admin_pass}${NC}"
+        if _mysql_exec "$db_user" "$db_pass" "$db_name" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', 'admin@ordervpn.local', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null; then
+            # Nilai plaintext yang ditampilkan status harus sama dengan password
+            # yang baru di-hash dan berhasil ditulis ke database.
+            printf '%s\n' "$admin_pass" > /root/.ordervpn_admin
+            chmod 600 /root/.ordervpn_admin
+            echo -e "  ${GREEN}  Admin: admin / ${admin_pass}${NC}"
+        else
+            echo -e "  ${RED}  Gagal menyimpan password admin ke database.${NC}"
+            return 1
+        fi
+    else
+        echo -e "  ${RED}  Gagal membuat hash password admin (PHP tidak tersedia).${NC}"
+        return 1
     fi
 
     # Auto-register local VPS as server in OrderVPN
@@ -28307,6 +28355,68 @@ _ordervpn_ensure_swap() {
 # OrderVPN Web — Admin Password Setup (v3.0 — email-only login, no SMTP needed)
 # ============================================================
 
+_ordervpn_fresh_reset() {
+    local web_dir="/var/www/html/ordervpn"
+    local db_file="/root/.ordervpn_db"
+    local db_name=""
+    local sql
+    local reset_ok=0
+    local has_old_state=0
+
+    [[ -e "$web_dir" || -f "$db_file" || -f /root/.ordervpn_admin || -f /root/.ordervpn_installed ]] && has_old_state=1
+
+    # Ambil nama database lama sebelum konfigurasi/file lama dihapus.
+    if [[ -f "$db_file" ]]; then
+        db_name=$(grep '^DB_NAME=' "$db_file" 2>/dev/null | cut -d= -f2- | tr -d '"' | xargs)
+    elif [[ -f "$web_dir/.env" ]]; then
+        db_name=$(grep '^DB_NAME=' "$web_dir/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | xargs)
+    fi
+    [[ "$db_name" =~ ^[A-Za-z0-9_]+$ ]] || db_name="ordervpn_db"
+
+    echo -e "  ${YELLOW}⚠ Fresh reinstall akan menghapus database '$db_name' dan seluruh data OrderVPN lama.${NC}"
+    echo -e "  ${DIM}Data VPN sistem utama di luar OrderVPN tidak disentuh.${NC}"
+
+    # Hapus hanya database/user OrderVPN. Jangan hapus file sebelum DB berhasil
+    # diakses, supaya kegagalan autentikasi MySQL tidak meninggalkan instalasi rusak.
+    sql="DROP DATABASE IF EXISTS \`${db_name}\`; DROP USER IF EXISTS 'ordervpn'@'localhost'; FLUSH PRIVILEGES;"
+    if command -v mysql >/dev/null 2>&1; then
+        if [[ -f /etc/mysql/debian.cnf ]] && mysql --defaults-file=/etc/mysql/debian.cnf -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        elif mysql -u root -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        elif sudo mysql -u root -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        fi
+    fi
+    # Beberapa distro memasang kedua binary, tetapi hanya client MariaDB
+    # yang dapat mengautentikasi root. Coba tetap secara independen.
+    if [[ "$reset_ok" -ne 1 ]] && command -v mariadb >/dev/null 2>&1; then
+        if [[ -f /etc/mysql/debian.cnf ]] && mariadb --defaults-file=/etc/mysql/debian.cnf -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        elif mariadb -u root -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        elif sudo mariadb -u root -e "$sql" >/dev/null 2>&1; then
+            reset_ok=1
+        fi
+    fi
+
+    if [[ "$reset_ok" -ne 1 ]]; then
+        # VPS baru mungkin belum memiliki database client/server. Itu aman
+        # selama tidak ada kredensial/marker database lama yang harus dihapus.
+        if [[ "$has_old_state" -eq 1 && ( -f "$db_file" || -f "$web_dir/.env" ) ]]; then
+            echo -e "  ${RED}✘ Fresh reset dibatalkan: tidak dapat mengakses MySQL/MariaDB sebagai root.${NC}"
+            echo -e "  ${YELLOW}Periksa service/database root lalu jalankan Menu 21 lagi.${NC}"
+            return 1
+        fi
+        echo -e "  ${YELLOW}⚠ Database belum tersedia; tidak ada database OrderVPN lama yang terdeteksi.${NC}"
+    fi
+
+    rm -rf -- "$web_dir"
+    rm -f -- "$db_file" /root/.ordervpn_admin /root/.ordervpn_installed
+    echo -e "  ${GREEN}✔ Data OrderVPN lama sudah dihapus; memulai instalasi fresh.${NC}"
+    return 0
+}
+
 _ordervpn_set_admin_password() {
     local env_file="/var/www/html/ordervpn/.env"
 
@@ -28351,9 +28461,17 @@ _ordervpn_set_admin_password() {
             ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
             if [[ -n "$ADMIN_HASH" ]]; then
                 local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
-                _mysql_exec "$_dbu" "$_dbp" "$_dbn" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', '$admin_email', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null || true
-                echo -e "  ${GREEN}  Password admin berhasil diupdate!${NC}"
-                echo -e "  ${DIM}  Email admin: ${admin_email}${NC}"
+                if _mysql_exec "$_dbu" "$_dbp" "$_dbn" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', '$admin_email', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null; then
+                    # Simpan password plaintext yang sama dengan yang baru di-hash ke DB.
+                    # _ordervpn_status membaca file ini untuk menampilkan kredensial login.
+                    printf '%s\n' "$admin_pass" > /root/.ordervpn_admin
+                    chmod 600 /root/.ordervpn_admin
+                    echo -e "  ${GREEN}  Password admin berhasil diupdate!${NC}"
+                    echo -e "  ${DIM}  Email admin: ${admin_email}${NC}"
+                else
+                    echo -e "  ${RED}  Gagal mengupdate password admin di database; password lama tetap dipakai.${NC}"
+                    return 1
+                fi
             else
                 echo -e "  ${YELLOW}  Gagal hash password (PHP tidak tersedia)${NC}"
             fi
@@ -28722,7 +28840,7 @@ deploy_web_menu() {
         _box_center $W "${YELLOW}${BOLD}ORDERVPN MENU${NC}"
         _box_divider $W
         echo -e "  ${CYAN}[1]${NC} ${WHITE}Lihat Info & URL${NC}"
-        echo -e "  ${CYAN}[2]${NC} ${WHITE}Reinstall / Update Web${NC}"
+        echo -e "  ${CYAN}[2]${NC} ${WHITE}Fresh Reinstall Web (hapus data lama)${NC}"
         echo -e "  ${CYAN}[3]${NC} ${WHITE}Ganti Password Admin${NC}"
         echo -e "  ${CYAN}[4]${NC} ${WHITE}Security Hardening${NC}"
         echo -e "  ${CYAN}[5]${NC} ${WHITE}Ganti Domain Web${NC}"
@@ -28736,13 +28854,19 @@ deploy_web_menu() {
         case $web_opt in
             1) _ordervpn_status; echo ""; read -rp "  Tekan Enter..."; deploy_web_menu ;;
             2)
-                echo -e "\n  ${CYAN}⏳ Reinstall OrderVPN Web...${NC}"
+                echo -e "\n  ${CYAN}⏳ Fresh reinstall OrderVPN Web...${NC}"
+                # Siapkan domain dan unduh/verifikasi source SEBELUM data lama
+                # dihapus. Arsip disimpan sementara agar tidak perlu download ulang.
                 setup_web_domain
                 deploy_web_page
                 _ordervpn_ensure_swap
-                _ordervpn_deploy_files
-                _ordervpn_setup_db
-                _ordervpn_set_admin_password
+                _ordervpn_download_web --download-only || { echo -e "  ${RED}✘ Source web gagal diunduh/diverifikasi; data lama dipertahankan.${NC}"; sleep 3; deploy_web_menu; return; }
+                cp /tmp/ordervpn-src.tar.gz /root/ordervpn-src.tar.gz 2>/dev/null || { echo -e "  ${RED}✘ Arsip source tidak bisa disimpan; data lama dipertahankan.${NC}"; sleep 3; deploy_web_menu; return; }
+                _ordervpn_fresh_reset || { rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz; echo -e "  ${RED}✘ Fresh reinstall dibatalkan; data lama dipertahankan.${NC}"; sleep 3; deploy_web_menu; return; }
+                ORDERVPN_STAGED_TAR=/root/ordervpn-src.tar.gz _ordervpn_deploy_files || { rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz; echo -e "  ${RED}✘ Gagal deploy file; instalasi dihentikan.${NC}"; sleep 3; return; }
+                rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz
+                _ordervpn_setup_db || { echo -e "  ${RED}✘ Gagal setup database; instalasi dihentikan.${NC}"; sleep 3; return; }
+                _ordervpn_set_admin_password || { echo -e "  ${RED}✘ Gagal setup password admin; instalasi dihentikan.${NC}"; sleep 3; return; }
                 _ordervpn_nginx_config
                 _ordervpn_security_harden
                 # Buat install marker
@@ -28762,8 +28886,9 @@ deploy_web_menu() {
         return
     fi
 
-    # Belum terinstall — jalankan instalasi
-    echo -e "  ${YELLOW}OrderVPN belum terinstall. Memulai instalasi...${NC}\n"
+    # Belum terinstall — jalankan instalasi fresh. Ini juga membersihkan
+    # sisa instalasi gagal bila marker lama sebelumnya hilang.
+    echo -e "  ${YELLOW}OrderVPN belum terinstall. Memulai instalasi fresh...${NC}\n"
 
     setup_web_domain
     deploy_web_page
@@ -28771,19 +28896,26 @@ deploy_web_menu() {
     echo -e "\n  ${CYAN}━━━ Step 0/6: Setup Swap 2GB ━━━${NC}"
     _ordervpn_ensure_swap
 
-    echo -e "\n  ${CYAN}━━━ Step 1/6: Deploy File Web ━━━${NC}"
-    _ordervpn_deploy_files || echo -e "  ${RED}✘ Gagal deploy file!${NC}"
+    echo -e "\n  ${CYAN}━━━ Step 1/6: Download & verifikasi source web ━━━${NC}"
+    _ordervpn_download_web --download-only || { echo -e "  ${RED}✘ Source web gagal diunduh/diverifikasi; instalasi dihentikan.${NC}"; sleep 3; return; }
+    cp /tmp/ordervpn-src.tar.gz /root/ordervpn-src.tar.gz 2>/dev/null || { echo -e "  ${RED}✘ Arsip source tidak bisa disimpan; instalasi dihentikan.${NC}"; sleep 3; return; }
 
-    echo -e "\n  ${CYAN}━━━ Step 2/6: Setup Database ━━━${NC}"
-    _ordervpn_setup_db || echo -e "  ${RED}✘ Gagal setup database!${NC}"
+    _ordervpn_fresh_reset || { rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz; echo -e "  ${RED}✘ Fresh reset gagal; instalasi dihentikan.${NC}"; sleep 3; return; }
 
-    echo -e "\n  ${CYAN}━━━ Step 3/6: Setup Admin Password ━━━${NC}"
-    _ordervpn_set_admin_password
+    echo -e "\n  ${CYAN}━━━ Step 2/6: Deploy File Web ━━━${NC}"
+    ORDERVPN_STAGED_TAR=/root/ordervpn-src.tar.gz _ordervpn_deploy_files || { rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz; echo -e "  ${RED}✘ Gagal deploy file!${NC}"; sleep 3; return; }
+    rm -f /root/ordervpn-src.tar.gz /tmp/ordervpn-src.tar.gz
 
-    echo -e "\n  ${CYAN}━━━ Step 4/6: Setup Nginx ━━━${NC}"
+    echo -e "\n  ${CYAN}━━━ Step 3/6: Setup Database ━━━${NC}"
+    _ordervpn_setup_db || { echo -e "  ${RED}✘ Gagal setup database!${NC}"; sleep 3; return; }
+
+    echo -e "\n  ${CYAN}━━━ Step 4/6: Setup Admin Password ━━━${NC}"
+    _ordervpn_set_admin_password || { echo -e "  ${RED}✘ Gagal setup password admin!${NC}"; sleep 3; return; }
+
+    echo -e "\n  ${CYAN}━━━ Step 5/6: Setup Nginx ━━━${NC}"
     _ordervpn_nginx_config || echo -e "  ${RED}✘ Gagal setup nginx!${NC}"
 
-    echo -e "\n  ${CYAN}━━━ Step 5/6: Security Hardening ━━━${NC}"
+    echo -e "\n  ${CYAN}━━━ Step 6/6: Security Hardening ━━━${NC}"
     _ordervpn_security_harden || echo -e "  ${YELLOW}⚠ Security hardening skipped${NC}"
 
     # Buat install marker — dipakai untuk deteksi instalasi (fallback jika .env hilang)
