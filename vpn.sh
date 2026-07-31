@@ -2,7 +2,17 @@
 _bot_dec() { echo "$1" | base64 -d 2>/dev/null | python3 -c "import sys; k='Y0uz1nCr4bzTun3l!'; d=sys.stdin.buffer.read(); print(''.join(chr(d[i]^ord(k[i%len(k)])) for i in range(len(d))), end='')"; }
 require_root() { [[ $EUID -ne 0 ]] && { echo "Harus dijalankan sebagai root!" >&2; exit 1; }; }
 _mysql_exec() {
-    local user="$1" pass="$2" db="$3" f rc
+    local user="$1" pass="$2" db="$3" f rc client alternate
+    client="${ORDERVPN_DB_CLIENT:-mysql}"
+    if ! command -v "$client" >/dev/null 2>&1; then
+        client="mariadb"
+    fi
+    if ! command -v "$client" >/dev/null 2>&1; then
+        return 127
+    fi
+    alternate="mariadb"
+    [[ "$client" == "mariadb" ]] && alternate="mysql"
+
     f=$(mktemp /tmp/mysql.cnf.XXXXXX)
     cat > "$f" <<CNF
 [client]
@@ -12,16 +22,15 @@ database=$db
 CNF
     chmod 600 "$f"
     shift 3
-    local client="mysql"
-    command -v mysql >/dev/null 2>&1 || client="mariadb"
-    if ! command -v "$client" >/dev/null 2>&1; then
-        rm -f "$f"
-        return 127
-    fi
+
     "$client" --defaults-extra-file="$f" "$@"
     rc=$?
+    if [[ "$rc" -ne 0 && "$alternate" != "$client" ]] && command -v "$alternate" >/dev/null 2>&1; then
+        "$alternate" --defaults-extra-file="$f" "$@"
+        rc=$?
+    fi
     rm -f "$f"
-    return $rc
+    return "$rc"
 }
 # CORE FUNCTIONS (dari vpn.sh 1-32063)
 # ============================================================
@@ -201,7 +210,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.3"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="f72e9789aeb19c50e3bb2cb16e3c77237e4cf7de8d8a83d066ec30a2270890c5"
+ORDERVPN_TAR_SHA256="93cf988f72f0fa86d86fe89ff9e691bfba3c6f5ced71c57a23551beb7fe00ef4"
 
 
 
@@ -28167,6 +28176,9 @@ EORESET
         return 1
     fi
 
+    # Pakai client yang berhasil mengautentikasi root untuk seluruh operasi
+    # berikutnya, termasuk _mysql_exec() dengan kredensial aplikasi.
+    ORDERVPN_DB_CLIENT="$_db_client"
     local _sql_ok=0
 
     # Helper: jalankan SQL via here-string (shared across methods A & B)

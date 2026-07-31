@@ -13,6 +13,12 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 }
 
 $db = getDB();
+$roleStmt = $db->prepare('SELECT role FROM users WHERE id=?');
+$roleStmt->execute([$userId]);
+$currentRole = $roleStmt->fetchColumn();
+if ($currentRole === 'admin' && !empty($pass)) {
+    echo json_encode(['success'=>false,'message'=>'Password admin harus diganti melalui Menu 21 agar informasi password tetap sinkron']); exit;
+}
 // Cek duplikat email
 $chk = $db->prepare("SELECT id FROM users WHERE email=? AND id!=?");
 $chk->execute([$email, $userId]);
