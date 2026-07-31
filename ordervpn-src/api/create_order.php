@@ -36,12 +36,22 @@ $harga = $days >= 30
 // Promo check
 $diskon = 0; $promoData = null;
 if ($promoCode && !$isTrial) {
-    $st = $db->prepare("SELECT * FROM promo_codes WHERE code=? AND status='active'");
-    $st->execute([$promoCode]); $promoData = $st->fetch();
+    $st = $db->prepare("SELECT p.*, EXISTS(
+        SELECT 1 FROM promo_redemptions pr WHERE pr.promo_id=p.id AND pr.user_id=?
+    ) AS already_used FROM promo_codes p WHERE p.code=? AND p.status='active'");
+    $st->execute([$userId, $promoCode]); $promoData = $st->fetch();
     if ($promoData) {
-        if ($promoData['expires_at'] && $promoData['expires_at'] < date('Y-m-d')) $promoData = null;
-        elseif ($promoData['max_uses'] > 0 && (int)$promoData['used_count'] >= (int)$promoData['max_uses']) $promoData = null;
-        elseif ($promoData['min_price'] > 0 && $harga < (int)$promoData['min_price']) $promoData = null;
+        if ($promoData['expires_at'] && date('Y-m-d', strtotime($promoData['expires_at'])) < date('Y-m-d')) {
+            echo json_encode(['success'=>false,'message'=>'Kode promo sudah kadaluarsa']); exit;
+        } elseif ((int)$promoData['already_used'] === 1) {
+            echo json_encode(['success'=>false,'message'=>'Kode promo ini sudah pernah kamu gunakan']); exit;
+        } elseif ($promoData['max_uses'] > 0 && (int)$promoData['used_count'] >= (int)$promoData['max_uses']) {
+            echo json_encode(['success'=>false,'message'=>'Kuota pemakaian kode promo sudah habis']); exit;
+        } elseif ($promoData['min_price'] > 0 && $harga < (int)$promoData['min_price']) {
+            echo json_encode(['success'=>false,'message'=>'Minimal pembelian untuk promo ini adalah '.formatRupiah($promoData['min_price'])]); exit;
+        }
+    } elseif ($promoCode) {
+        echo json_encode(['success'=>false,'message'=>'Kode promo tidak ditemukan atau tidak aktif']); exit;
     }
     if ($promoData) {
         if ($promoData['discount_type'] === 'free_account') {
@@ -112,6 +122,7 @@ try {
         $result['link_grpc'] ?? null,
         $expiry, $days, $isTrial ? 1 : 0, $harga
     ]);
+    $accountId = (int)$db->lastInsertId();
 
     // Catat transaksi
     $ketOrder = "Order {$tipe} - {$username} ({$days} hari)";
@@ -124,9 +135,18 @@ try {
            ->execute([$userId, 'trial', "Trial {$tipe} - {$username} (1 jam)"]);
     }
 
-    // Increment promo usage
+    // Promo hanya dapat dipakai sekali oleh setiap user. Unique key pada
+    // promo_redemptions juga melindungi dari dua checkout bersamaan.
     if ($promoData) {
-        $db->prepare("UPDATE promo_codes SET used_count=used_count+1 WHERE id=?")->execute([$promoData['id']]);
+        $redeem = $db->prepare("INSERT INTO promo_redemptions (promo_id,user_id,vpn_account_id) VALUES (?,?,?)");
+        $redeem->execute([$promoData['id'], $userId, $accountId]);
+
+        $usage = $db->prepare("UPDATE promo_codes SET used_count=used_count+1
+            WHERE id=? AND (max_uses IS NULL OR max_uses=0 OR used_count < max_uses)");
+        $usage->execute([$promoData['id']]);
+        if ($usage->rowCount() !== 1) {
+            throw new RuntimeException('Kuota pemakaian kode promo sudah habis');
+        }
     }
 
     $db->commit();
@@ -136,6 +156,8 @@ try {
         ? date('d M Y, H:i', strtotime('+1 hour')).' (1 Jam Trial)'
         : date('d M Y', strtotime("+{$days} days"));
     $result['harga']   = formatRupiah($harga);
+    $result['account_id'] = $accountId;
+    $result['status']  = 'active';
     $result['is_trial']= $isTrial;
     if ($diskon > 0) {
         $result['diskon'] = formatRupiah($diskon);
@@ -152,7 +174,12 @@ try {
 
 } catch (Exception $e) {
     $db->rollback();
-    // Rollback akun di server jika DB error
-    VPNManager::deleteAccount($server, $tipe, $username);
+    // Jangan menghapus akun milik checkout lain jika request bersamaan memakai
+    // username yang sama dan transaksi lain sudah berhasil tersimpan.
+    $existing = $db->prepare("SELECT COUNT(*) FROM vpn_accounts WHERE server_id=? AND tipe=? AND username=?");
+    $existing->execute([$serverId, $tipe, $username]);
+    if ((int)$existing->fetchColumn() === 0) {
+        VPNManager::deleteAccount($server, $tipe, $username);
+    }
     echo json_encode(['success'=>false,'message'=>'DB error: '.$e->getMessage()]);
 }

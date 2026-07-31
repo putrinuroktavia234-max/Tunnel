@@ -35,12 +35,50 @@ function getDB() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
+            ensureSchemaCompatibility($pdo);
         } catch (PDOException $e) {
             http_response_code(500);
             die(json_encode(['success'=>false,'message'=>'DB error: '.$e->getMessage()]));
         }
     }
     return $pdo;
+}
+
+function ensureSchemaCompatibility(PDO $pdo) {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+
+    // Existing installations may predate the promo and wildcard columns.
+    // Keep the migration best-effort so a legacy database never blanks the panel.
+    $migrations = [
+        "ALTER TABLE promo_codes ADD COLUMN used_count INT NOT NULL DEFAULT 0 AFTER free_days",
+        "ALTER TABLE wildcard_domains ADD COLUMN keterangan VARCHAR(255) NULL AFTER domain",
+        "CREATE TABLE IF NOT EXISTS promo_redemptions (
+            id INT NOT NULL AUTO_INCREMENT,
+            promo_id INT NOT NULL,
+            user_id INT NOT NULL,
+            vpn_account_id INT DEFAULT NULL,
+            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY promo_user (promo_id, user_id),
+            KEY user_id (user_id),
+            CONSTRAINT promo_redemptions_promo_fk FOREIGN KEY (promo_id) REFERENCES promo_codes (id) ON DELETE CASCADE,
+            CONSTRAINT promo_redemptions_user_fk FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "INSERT IGNORE INTO promo_redemptions (promo_id, user_id)
+            SELECT p.id, t.user_id
+            FROM promo_codes p
+            JOIN transactions t ON t.type='order' AND t.keterangan LIKE CONCAT('%[Promo: ', p.code, ']%')",
+    ];
+    foreach ($migrations as $sql) {
+        try { $pdo->exec($sql); } catch (PDOException $e) { /* already applied or not ready yet */ }
+    }
+
+    // Migrate the old bundled contact only; never overwrite a custom admin value.
+    try {
+        $pdo->exec("UPDATE app_settings SET setting_value='@YouzinCrabz' WHERE setting_key='contact_tg' AND setting_value IN ('', '@ordervpn_admin')");
+    } catch (PDOException $e) { /* settings table may not exist during first bootstrap */ }
 }
 
 function getSetting($key, $default='') {

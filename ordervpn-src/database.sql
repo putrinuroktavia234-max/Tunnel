@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS `promo_codes` (
   `discount_type` enum('percent','nominal','free_account') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'percent',
   `discount_value` decimal(10,2) NOT NULL DEFAULT '0.00',
   `free_days` int DEFAULT NULL COMMENT 'Jumlah hari gratis untuk tipe free_account',
+  `used_count` int NOT NULL DEFAULT '0',
   `max_uses` int DEFAULT NULL,
   `min_price` decimal(10,2) DEFAULT '0.00',
   `expires_at` datetime DEFAULT NULL,
@@ -148,8 +149,23 @@ CREATE TABLE IF NOT EXISTS `vpn_accounts` (
 CREATE TABLE IF NOT EXISTS `wildcard_domains` (
   `id` int NOT NULL AUTO_INCREMENT,
   `domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `keterangan` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `domain` (`domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE IF NOT EXISTS `promo_redemptions` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `promo_id` int NOT NULL,
+  `user_id` int NOT NULL,
+  `vpn_account_id` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `promo_user` (`promo_id`,`user_id`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `promo_redemptions_promo_fk` FOREIGN KEY (`promo_id`) REFERENCES `promo_codes` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `promo_redemptions_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
@@ -160,7 +176,7 @@ CREATE TABLE IF NOT EXISTS `wildcard_domains` (
 INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`) VALUES
 ('app_name', 'OrderVPN'),
 ('app_logo', '⚡'),
-('contact_tg', '@ordervpn_admin'),
+('contact_tg', '@YouzinCrabz'),
 ('contact_wa', ''),
 ('contact_ig', '');
 

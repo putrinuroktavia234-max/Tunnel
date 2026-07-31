@@ -270,10 +270,19 @@ if ($act==='add_server') {
     }
 
     if ($act==='add_wildcard') {
-        $dom = sanitize($_POST['domain']??'');
+        $dom = strtolower(trim(sanitize($_POST['domain']??'')));
+        $dom = preg_replace('/^https?:\\/\\//i', '', $dom);
+        $dom = rtrim($dom, "/ ");
         $ket = sanitize($_POST['keterangan']??'');
-        if ($dom) $db->prepare("INSERT INTO wildcard_domains (domain,keterangan) VALUES (?,?)")->execute([$dom,$ket]);
-        header('Location: /ordervpn/admin/'); exit;
+        if (!$dom || !preg_match('/^(?:\\*\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$/i', $dom)) {
+            header('Location: /ordervpn/admin/?wildcard_error=' . urlencode('Domain wildcard tidak valid')); exit;
+        }
+        try {
+            $db->prepare("INSERT INTO wildcard_domains (domain,keterangan) VALUES (?,?)")->execute([$dom,$ket]);
+            header('Location: /ordervpn/admin/?wildcard_saved=1'); exit;
+        } catch (PDOException $e) {
+            header('Location: /ordervpn/admin/?wildcard_error=' . urlencode('Domain sudah terdaftar atau tabel belum siap')); exit;
+        }
     }
     if ($act==='delete_wildcard') {
         $db->prepare("DELETE FROM wildcard_domains WHERE id=?")->execute([(int)$_POST['id']]);
@@ -329,6 +338,8 @@ $_adminUser->execute([$session['user_id']]); $_adminUser = $_adminUser->fetch();
 
 $appName = getSetting('app_name','OrderVPN');
 $saved   = isset($_GET['saved']);
+$wildcardError = $_GET['wildcard_error'] ?? '';
+$wildcardSaved = isset($_GET['wildcard_saved']);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -419,6 +430,8 @@ $saved   = isset($_GET['saved']);
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     Settings saved successfully.
   </div><?php endif;?>
+  <?php if($wildcardSaved):?><div class="alert alert-success">Domain wildcard berhasil disimpan.</div><?php endif;?>
+  <?php if($wildcardError):?><div class="alert alert-error"><?=esc($wildcardError)?></div><?php endif;?>
 
   <!-- DASHBOARD -->
   <div class="page admin-section" id="tab-dashboard">
@@ -863,7 +876,7 @@ $saved   = isset($_GET['saved']);
         </div>
         <script>
         (function(){
-          var f=document.querySelector('form[action*="save_settings"]');
+          var f=document.querySelector('form input[name="action"][value="save_settings"]')?.form;
           if(f){
             f.addEventListener('submit',function(){
               for(var i=1;i<=3;i++){

@@ -296,7 +296,7 @@ try {
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.3rem">
               <div class="akun-exp <?=$expClass?>"><?=$a['is_trial']?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Trial':($a['status']==='active'?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> '.$sisa.' hari':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:2px"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Expired')?></div>
               <div style="display:flex;gap:.35rem">
-                <button class="btn btn-sm btn-outline" onclick="showAkunDetail(<?=json_encode($a)?>)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                <button class="btn btn-sm btn-outline" type="button" onclick='showAkunDetail(<?=htmlspecialchars(json_encode($a, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP), ENT_QUOTES, "UTF-8")?>)'><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
                 <?php if($a['status']==='active'):?>
                 <button class="btn btn-sm btn-red" onclick="confirmDelete(<?=$a['id']?>, '<?=esc($a['username'])?>','<?=$a['tipe']?>')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                 <?php endif;?>
@@ -558,7 +558,10 @@ function applyPromo(skipAlert) {
   }
   btn.disabled = true;
   btn.innerHTML = '<span class="loading"></span>';
-  fetch('/ordervpn/api/check_promo.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'code='+encodeURIComponent(code)})
+  const serverId = document.getElementById('orderServer')?.value || '';
+  const days = currentDays || 0;
+  const body = 'code='+encodeURIComponent(code)+'&server_id='+encodeURIComponent(serverId)+'&days='+encodeURIComponent(days);
+  fetch('/ordervpn/api/check_promo.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body})
   .then(r=>r.json()).then(res=>{
     if(res.success) {
       promoApplied = res.data;

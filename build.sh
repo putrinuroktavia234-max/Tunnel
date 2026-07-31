@@ -65,7 +65,11 @@ fi
 
 # ── Build tar.gz ──
 echo "  Membuat $OUTPUT ..."
-tar -czf "$OUTPUT" -C "$SCRIPT_DIR" ordervpn-src/
+# Do not ship runtime uploads/sample user data in the release asset.
+tar -czf "$OUTPUT" -C "$SCRIPT_DIR" \
+    --exclude='ordervpn-src/uploads/avatars/*' \
+    --exclude='ordervpn-src/uploads/bukti/*' \
+    ordervpn-src/
 SIZE=$(du -h "$OUTPUT" | cut -f1)
 
 # ── SHA256 ──

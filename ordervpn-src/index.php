@@ -27,6 +27,12 @@ function featureIcon($p){return '<div class="feature-icon">'.icon($p,20).'</div>
 
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+.public-announcements{position:relative;z-index:2;max-width:1100px;margin:76px auto -36px;padding:0 2rem;display:flex;flex-direction:column;gap:.5rem}
+.public-announcement,.public-marquee{display:flex;align-items:center;gap:.6rem;padding:.65rem .9rem;border:1px solid rgba(99,102,241,.2);border-radius:10px;background:rgba(99,102,241,.08);color:var(--text);font-size:.82rem;line-height:1.45}
+.public-announcement-badge{padding:.15rem .45rem;border-radius:4px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:.65rem;font-weight:800;letter-spacing:.04em;flex-shrink:0}
+.public-marquee{color:var(--text2);background:rgba(255,255,255,.03);border-color:var(--border)}
+@media(max-width:768px){.public-announcements{margin-top:68px;margin-bottom:-24px;padding:0 1rem}}
+
 :root{
   --bg:#070b14;--bg2:#0a0f1e;--card:rgba(255,255,255,0.03);
   --border:rgba(255,255,255,0.06);--text:#f1f5f9;--text2:#94a3b8;--text3:#475569;
@@ -177,6 +183,26 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
   </button>
 </nav>
 
+<?php
+$_publicAnnouncements = [];
+for ($_i=1; $_i<=3; $_i++) {
+    $_val = getSetting('announce_'.$_i, '');
+    if ($_val) {
+        $_parts = explode('|', $_val, 2);
+        $_publicAnnouncements[] = ['badge' => $_parts[0] ?? 'INFO', 'text' => $_parts[1] ?? $_parts[0]];
+    }
+}
+$_marqueeText = trim((string)getSetting('marquee_text', ''));
+$_marqueeEnabled = getSetting('marquee_enabled', '1') === '1';
+if ($_publicAnnouncements || ($_marqueeEnabled && $_marqueeText)):?>
+<div class="public-announcements" role="status" aria-live="polite">
+  <?php foreach ($_publicAnnouncements as $_a):?>
+  <div class="public-announcement"><span class="public-announcement-badge"><?=esc($_a['badge'])?></span><span><?=esc($_a['text'])?></span></div>
+  <?php endforeach;?>
+  <?php if ($_marqueeEnabled && $_marqueeText):?><div class="public-marquee"><?=esc($_marqueeText)?></div><?php endif;?>
+</div>
+<?php endif;?>
+
 <section class="hero" id="hero">
   <div class="hero-orb"></div>
   <div class="hero-orb"></div>
@@ -241,7 +267,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
     <div class="footer-brand"><h3><?=$appName?></h3><p>Layanan Tunneling Premium Indonesia. Berselancar dengan aman di dunia internet dengan tunneling terbaik.</p></div>
     <div class="footer-col"><h4>Layanan</h4><a href="#layanan">SSH</a><a href="#layanan">Trojan</a><a href="#layanan">VMess</a><a href="#layanan">VLess</a></div>
     <div class="footer-col"><h4>Halaman</h4><a href="#hero">Beranda</a><a href="#harga">Harga</a><a href="login.php">Masuk</a></div>
-    <div class="footer-col"><h4>Kontak</h4><a href="#">Telegram: <?=esc(getSetting('contact_tg','@ordervpn_admin'))?></a><a href="#">WhatsApp: <?=esc(getSetting('contact_wa','0812-3456-7890'))?></a></div>
+    <div class="footer-col"><h4>Kontak</h4><a href="#">Telegram: <?=esc(getSetting('contact_tg','@YouzinCrabz'))?></a><a href="#">WhatsApp: <?=esc(getSetting('contact_wa','0812-3456-7890'))?></a></div>
   </div>
   <div class="footer-bottom">2020-<?=date('Y')?> &copy; <?=$appName?> &mdash; All Rights Reserved</div>
 </footer>

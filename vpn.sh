@@ -195,7 +195,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.3"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="d73a8d11e151da8c9b64e3489d6c549c2e9584e0b067fb25925537d323e5e1d5"
+ORDERVPN_TAR_SHA256="e07a72b60e44c51f388978914f13d956710caf8807dfb5a9a2fbbc72dc491842"
 
 
 
@@ -2700,7 +2700,7 @@ show_menu() {
 
 
 
-    printf "  Telegram : ${CYAN}@ordervpn_admin${NC}\n"
+    printf "  Telegram : ${CYAN}@YouzinCrabz${NC}\n"
 
 
 
@@ -25380,7 +25380,7 @@ testimonial-grid {
 
 
 
-          <span><strong>Telegram:</strong> @ordervpn_admin</span>
+          <span><strong>Telegram:</strong> @YouzinCrabz</span>
 
 
 
@@ -27651,8 +27651,6 @@ _ordervpn_deploy_files() {
 
     mkdir -p "$DIR"/{includes,api,admin,cron,uploads/bukti}
 
-    rsync -a --delete "$DIR"/ "$DIR"/ 2>/dev/null || true
-
     # Baca DB_PASS dari .env
     local DB_PASS
     DB_PASS=$(grep "^DB_PASS=" "$DIR/.env" 2>/dev/null | cut -d= -f2-)
@@ -27965,12 +27963,18 @@ _ordervpn_download_web() {
     fi
 
     mkdir -p "$dest"
-    rm -rf "${dest}"/*
+    # Deploy a clean source tree while preserving only the database credentials.
+    # `rm "$dest"/*` misses dotfiles and used to leave stale hidden files behind.
+    find "$dest" -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf -- {} + 2>/dev/null
 
     if ! tar -xzf "$tmp" -C "$dest" --strip-components=1 2>/dev/null; then
         echo -e "  ${RED}  Gagal mengekstrak source web${NC}"
         return 1
     fi
+
+    # Never publish bundled/sample uploads as live user data.
+    find "$dest/uploads/avatars" -type f -delete 2>/dev/null || true
+    find "$dest/uploads/bukti" -type f -delete 2>/dev/null || true
 
     # Fix file ownership untuk nginx/PHP-FPM
     chown -R www-data:www-data "$dest" 2>/dev/null || true
