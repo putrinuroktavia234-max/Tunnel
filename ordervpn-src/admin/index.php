@@ -350,8 +350,8 @@ $wildcardSaved = isset($_GET['wildcard_saved']);
 </head>
 <body>
 <div class="admin-layout">
+  <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop" onclick="toggleAdminSidebar()"></div>
   <aside class="admin-sidebar" id="adminSidebar">
-    <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop" onclick="toggleAdminSidebar()"></div>
     <div class="admin-sidebar-logo">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
       <span><?=$appName?> <span class="admin-badge">Admin</span></span>
@@ -1220,6 +1220,14 @@ function showTab(t,el){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+t).classList.add('active');
   (el||event.target).classList.add('active');
+  if(window.innerWidth<=768){var s=document.getElementById('adminSidebar');if(s)s.classList.remove('open');var b=document.getElementById('adminSidebarBackdrop');if(b)b.classList.remove('show');}
+}
+function toggleAdminSidebar(){
+  var s=document.getElementById('adminSidebar');
+  var b=document.getElementById('adminSidebarBackdrop');
+  if(!s) return;
+  s.classList.toggle('open');
+  if(b) b.classList.toggle('show');
 }
 </script>
 
