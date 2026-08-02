@@ -28522,7 +28522,7 @@ _ordervpn_set_admin_password() {
                     return 1
                 fi
             else
-                echo -e "  ${YELLOW}  Gagal hash password (PHP tidak tersedia)${NC}"
+                echo -e "  ${YELLOW}  Gagal membuat hash password; coba lagi nanti via Menu 21 (OrderVPN Web) → [3].${NC}"
             fi
         else
             echo -e "  ${YELLOW}  Gagal baca konfigurasi database dari .env${NC}"
