@@ -11279,7 +11279,7 @@ print('  ---')
 
 
 
-                            ADMIN_HASH=$(new_admin_pass="$new_admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+                            ADMIN_HASH=$(_ordervpn_bcrypt_hash "$new_admin_pass")
 
 
 
@@ -28021,6 +28021,43 @@ _ordervpn_download_web() {
     return 0
 }
 
+# ============================================================
+# OrderVPN Web — bcrypt hash helper (kompatibel password_verify() PHP)
+# ============================================================
+# Prioritas: PHP CLI → htpasswd (apache2-utils) → python3 bcrypt.
+# Semua fallback menghasilkan hash bcrypt $2y$ yang bisa diverifikasi
+# password_verify() di login.php.
+_ordervpn_bcrypt_hash() {
+    local pass="$1" hash=""
+    # Pastikan PHP CLI tersedia — PHP-FPM diinstall lebih lambat (step nginx),
+    # jadi CLI wajib dijamin ada di sini sebelum membuat hash bcrypt.
+    _ordervpn_ensure_php
+    if command -v php >/dev/null 2>&1; then
+        hash=$(new_admin_pass="$pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+    fi
+    if [[ -z "$hash" ]] && command -v htpasswd >/dev/null 2>&1; then
+        hash=$(htpasswd -bnBC 10 "" "$pass" 2>/dev/null | tr -d ':\n')
+    fi
+    if [[ -z "$hash" ]] && command -v python3 >/dev/null 2>&1; then
+        hash=$(python3 -c 'import bcrypt,sys;print(bcrypt.hashpw(sys.argv[1].encode(),bcrypt.gensalt(rounds=10)).decode())' "$pass" 2>/dev/null)
+    fi
+    if [[ -n "$hash" ]]; then
+        printf '%s\n' "$hash"
+        return 0
+    fi
+    return 1
+}
+
+# Pastikan PHP CLI tersedia (dibutuhkan untuk password_hash bcrypt).
+# PHP-FPM diinstall lebih lambat (step nginx), jadi CLI dijamin di sini.
+_ordervpn_ensure_php() {
+    command -v php >/dev/null 2>&1 && return 0
+    echo -e "  ${YELLOW}  PHP CLI belum ada — menginstall php-cli...${NC}"
+    _wait_apt_lock
+    DEBIAN_FRONTEND=noninteractive apt-get install -y php-cli >/dev/null 2>&1 || true
+    command -v php >/dev/null 2>&1
+}
+
 _ordervpn_setup_db() {
     local db_name="ordervpn_db"
     local db_user="ordervpn"
@@ -28279,7 +28316,7 @@ EODB
         admin_pass="${admin_pass}@A1"  # guaranteed special char + upper + digit
     fi
     local ADMIN_HASH
-    ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+    ADMIN_HASH=$(_ordervpn_bcrypt_hash "$admin_pass")
     if [[ -n "$ADMIN_HASH" ]]; then
         local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
         if _mysql_exec "$db_user" "$db_pass" "$db_name" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', 'admin@ordervpn.local', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null; then
@@ -28293,8 +28330,8 @@ EODB
             return 1
         fi
     else
-        echo -e "  ${RED}  Gagal membuat hash password admin (PHP tidak tersedia).${NC}"
-        return 1
+        echo -e "  ${YELLOW}  ⚠ Gagal membuat hash password admin — lanjut tanpa set admin.${NC}"
+        echo -e "  ${YELLOW}  Setelah install selesai: Menu 21 (OrderVPN Web) → [3] Ganti Password Admin.${NC}"
     fi
 
     # Auto-register local VPS as server in OrderVPN
@@ -28470,7 +28507,7 @@ _ordervpn_set_admin_password() {
         _dbn=$(grep "^DB_NAME=" "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '"' | xargs)
         if [[ -n "$_dbu" && -n "$_dbp" && -n "$_dbn" ]]; then
             local ADMIN_HASH
-            ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+            ADMIN_HASH=$(_ordervpn_bcrypt_hash "$admin_pass")
             if [[ -n "$ADMIN_HASH" ]]; then
                 local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
                 if _mysql_exec "$_dbu" "$_dbp" "$_dbn" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', '$admin_email', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null; then
@@ -28801,7 +28838,7 @@ _ordervpn_status() {
             _dbn=$(grep "^DB_NAME=" "$DB_FILE" 2>/dev/null | cut -d= -f2-)
             if [[ -n "$_dbu" && -n "$_dbp" && -n "$_dbn" ]]; then
                 local ADMIN_HASH
-                ADMIN_HASH=$(new_admin_pass="$admin_pass" php -r 'echo password_hash(getenv("new_admin_pass"), PASSWORD_BCRYPT);' 2>/dev/null)
+                ADMIN_HASH=$(_ordervpn_bcrypt_hash "$admin_pass")
                 if [[ -n "$ADMIN_HASH" ]]; then
                     local ADMIN_HASH_ESC="${ADMIN_HASH//\$/\\$}"
                     _mysql_exec "$_dbu" "$_dbp" "$_dbn" -e "INSERT INTO users (username, email, password, role, is_verified) VALUES ('admin', 'admin@ordervpn.local', '$ADMIN_HASH_ESC', 'admin', 1) ON DUPLICATE KEY UPDATE email=VALUES(email), password=VALUES(password);" 2>/dev/null || true
