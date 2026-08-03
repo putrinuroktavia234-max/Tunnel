@@ -104,11 +104,18 @@ case "${1:-}" in
 
         acquire_lock
         tmp=$(mktemp)
+        # Trojan inbound pakai field "password", vmess/vless pakai "id"
+        if [ "$proto" = "trojan" ]; then
+            CLIENT_ADD='(.inbounds[] | select(.tag==$wstag) | .settings.clients) += [{"password":$uuid,"email":$email}] |
+                        (.inbounds[] | select(.tag==$grpctag) | .settings.clients) += [{"password":$uuid,"email":$email}]'
+        else
+            CLIENT_ADD='(.inbounds[] | select(.tag==$wstag) | .settings.clients) += [{"id":$uuid,"email":$email,"alterId":0}] |
+                        (.inbounds[] | select(.tag==$grpctag) | .settings.clients) += [{"id":$uuid,"email":$email,"alterId":0}]'
+        fi
         # Check if jq operations work
         if ! jq --arg u "$user" --arg uuid "$uuid" --arg email "$user" \
             --arg wstag "$ws_tag" --arg grpctag "$grpc_tag" \
-            '(.inbounds[] | select(.tag==$wstag) | .settings.clients) += [{"id":$uuid,"email":$email,"alterId":0}] |
-             (.inbounds[] | select(.tag==$grpctag) | .settings.clients) += [{"id":$uuid,"email":$email,"alterId":0}]' \
+            "$CLIENT_ADD" \
             "$XRAY_CONFIG" > "$tmp" 2>/dev/null; then
             rm -f "$tmp"
             release_lock
@@ -116,27 +123,32 @@ case "${1:-}" in
             exit 1
         fi
         mv "$tmp" "$XRAY_CONFIG"
+        chmod 644 "$XRAY_CONFIG"
         release_lock
 
         # Restart xray
         systemctl restart xray 2>/dev/null || true
         sleep 0.5
 
-        # Build config links
-        link_ws="${proto}://${uuid}@${domain}:${ws_port}?path=%2F${proto}&security=none&type=ws#${user}-ws"
-        link_grpc="${proto}://${uuid}@${domain}:${grpc_port}?serviceName=${proto}-grpc&security=none&type=grpc#${user}-grpc"
+        # Build config links (arsitektur: NonTLS=80, TLS=443, gRPC=443 via Nginx)
+        link_nontls="${proto}://${uuid}@${domain}:80?path=%2F${proto}&security=none&encryption=none&type=ws#${user}-NonTLS"
+        link_grpc="${proto}://${uuid}@${domain}:443?serviceName=${proto}-grpc&security=tls&encryption=none&type=grpc&sni=${domain}#${user}-gRPC"
+        link_tls="${proto}://${uuid}@${domain}:443?path=%2F${proto}&security=tls&encryption=none&host=${domain}&type=ws&sni=${domain}#${user}-TLS"
 
-        # VMess uses special format
+        # VMess uses special format (JSON base64)
         if [ "$proto" = "vmess" ]; then
-            # VMess uses a JSON config format
-            vmess_config="{\"v\":\"2\",\"ps\":\"${user}\",\"add\":\"${domain}\",\"port\":\"${ws_port}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"/${proto}\",\"tls\":\"\"}"
-            link_ws="vmess://$(echo -n "$vmess_config" | base64 -w0 2>/dev/null || echo -n "$vmess_config" | base64 | tr -d '\n')"
+            vmess_ntls="{\"v\":\"2\",\"ps\":\"${user}\",\"add\":\"${domain}\",\"port\":\"80\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"/${proto}\",\"tls\":\"\"}"
+            link_nontls="vmess://$(echo -n "$vmess_ntls" | base64 -w0 2>/dev/null || echo -n "$vmess_ntls" | base64 | tr -d '\n')"
+            vmess_tls="{\"v\":\"2\",\"ps\":\"${user}\",\"add\":\"${domain}\",\"port\":\"443\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${domain}\",\"path\":\"/${proto}\",\"tls\":\"tls\",\"sni\":\"${domain}\"}"
+            link_tls="vmess://$(echo -n "$vmess_tls" | base64 -w0 2>/dev/null || echo -n "$vmess_tls" | base64 | tr -d '\n')"
+            vmess_grpc="{\"v\":\"2\",\"ps\":\"${user}\",\"add\":\"${domain}\",\"port\":\"443\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"grpc\",\"type\":\"none\",\"serviceName\":\"${proto}-grpc\",\"path\":\"${proto}-grpc\",\"tls\":\"tls\",\"sni\":\"${domain}\"}"
+            link_grpc="vmess://$(echo -n "$vmess_grpc" | base64 -w0 2>/dev/null || echo -n "$vmess_grpc" | base64 | tr -d '\n')"
         fi
 
         # Save account info
         echo "UUID=$uuid|QUOTA=$quota|IPLIMIT=$iplimit|EXPIRED=$expired|CREATED=$(date +%Y-%m-%d)" > "${AKUN_DIR}/${proto}-${user}.txt"
 
-        echo "{\"success\":true,\"protocol\":\"$proto\",\"username\":\"$user\",\"uuid\":\"$uuid\",\"ip\":\"$ip\",\"domain\":\"$domain\",\"expired\":\"$expired\",\"link_ws\":\"$link_ws\",\"link_grpc\":\"$link_grpc\",\"link_nontls\":\"$link_ws\",\"link_tls\":\"$link_ws\",\"link_config\":\"$link_ws\",\"link_trojan\":\"trojan://${uuid}@${domain}:${ws_port}?path=%2F${proto}&security=none&type=ws#${user}-trojan\"}"
+        echo "{\"success\":true,\"protocol\":\"$proto\",\"username\":\"$user\",\"uuid\":\"$uuid\",\"ip\":\"$ip\",\"domain\":\"$domain\",\"expired\":\"$expired\",\"link_ws\":\"$link_nontls\",\"link_grpc\":\"$link_grpc\",\"link_nontls\":\"$link_nontls\",\"link_tls\":\"$link_tls\",\"link_config\":\"$link_nontls\",\"link_trojan\":\"trojan://${uuid}@${domain}:443?path=%2F${proto}&security=tls&host=${domain}&type=ws&sni=${domain}#${user}-Trojan\"}"
         log_event "CREATE $proto $user $days $quota $iplimit (uuid=$uuid)"
         ;;
 
@@ -166,6 +178,7 @@ case "${1:-}" in
         jq --arg email "$user" '
             (.inbounds[].settings.clients) |= map(select(.email != $email))
         ' "$XRAY_CONFIG" > "$tmp" 2>/dev/null && mv "$tmp" "$XRAY_CONFIG"
+        chmod 644 "$XRAY_CONFIG"
         release_lock
 
         systemctl restart xray 2>/dev/null || true

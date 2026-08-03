@@ -210,7 +210,7 @@ VERSION_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${G
 # OrderVPN Web Release (auto-updated by build.sh)
 ORDERVPN_VERSION="3.12.4"
 ORDERVPN_TAR_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download/v${ORDERVPN_VERSION}/ordervpn-src.tar.gz"
-ORDERVPN_TAR_SHA256="b9cedd119e12f6c5f03ea82aa0ed69a771500c82924dc664bf94016ef2ec3d8f"
+ORDERVPN_TAR_SHA256="b070231da1ab985b41c4a7672dc15eee765751f42206cb7a0d7dcc12ce302ff6"
 
 
 
@@ -16606,7 +16606,8 @@ _adv_firewall() {
 
 
 
-                ufw allow 22/tcp >/dev/null 2>&1; ufw allow 443/tcp >/dev/null 2>&1
+                ufw allow 22/tcp >/dev/null 2>&1; ufw allow 80/tcp >/dev/null 2>&1; ufw allow 81/tcp >/dev/null 2>&1; ufw allow 443/tcp >/dev/null 2>&1
+                ufw allow 8080:8082/tcp >/dev/null 2>&1; ufw allow 8444:8446/tcp >/dev/null 2>&1
 
 
 

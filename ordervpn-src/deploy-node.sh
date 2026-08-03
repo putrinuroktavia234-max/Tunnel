@@ -154,10 +154,17 @@ case "${1:-}" in
             echo "{\"success\":true,\"protocol\":\"ssh\",\"username\":\"$user\",\"password\":\"$pass\",\"expired\":\"$expired\"}"
         else
             acquire_lock
-            tmp=$(mktemp) && jq --arg u "$user" --arg uuid "$uuid" --arg email "$user" '
-                (.inbounds[] | select(.tag=="'"${proto}"'-ws") .settings.clients) += [{"id":$uuid,"email":$email}]
-              | (.inbounds[] | select(.tag=="'"${proto}"'-grpc") .settings.clients) += [{"id":$uuid,"email":$email}]
-            ' "$XRAY_CONFIG" > "$tmp" && mv "$tmp" "$XRAY_CONFIG"
+            tmp=$(mktemp)
+            # Trojan inbound pakai field "password", vmess/vless pakai "id"
+            if [ "$proto" = "trojan" ]; then
+                CLIENT_ADD='(.inbounds[] | select(.tag=="'"${proto}"'-ws") .settings.clients) += [{"password":$uuid,"email":$email}]
+              | (.inbounds[] | select(.tag=="'"${proto}"'-grpc") .settings.clients) += [{"password":$uuid,"email":$email}]'
+            else
+                CLIENT_ADD='(.inbounds[] | select(.tag=="'"${proto}"'-ws") .settings.clients) += [{"id":$uuid,"email":$email}]
+              | (.inbounds[] | select(.tag=="'"${proto}"'-grpc") .settings.clients) += [{"id":$uuid,"email":$email}]'
+            fi
+            jq --arg u "$user" --arg uuid "$uuid" --arg email "$user" "$CLIENT_ADD" "$XRAY_CONFIG" > "$tmp" && mv "$tmp" "$XRAY_CONFIG"
+            chmod 644 "$XRAY_CONFIG"
             release_lock
             systemctl restart xray 2>/dev/null || true
             
@@ -179,6 +186,7 @@ case "${1:-}" in
                 (.inbounds[] | select(.tag=="'"${proto}"'-ws") .settings.clients) |= map(select(.email!=$email))
               | (.inbounds[] | select(.tag=="'"${proto}"'-grpc") .settings.clients) |= map(select(.email!=$email))
             ' "$XRAY_CONFIG" > "$tmp" && mv "$tmp" "$XRAY_CONFIG"
+            chmod 644 "$XRAY_CONFIG"
             release_lock
             systemctl restart xray 2>/dev/null || true
             rm -f "${AKUN_DIR}/${proto}-${user}.txt"
