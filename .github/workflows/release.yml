@@ -5,13 +5,14 @@ on:
     branches: [main, master]
     paths:
       - 'ordervpn-src/**'
-      - 'vpn.sh'
       - 'build.sh'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Override version (leave empty to use version from vpn.sh)'
+        description: 'Override web-panel version'
         required: false
+        type: string
 
 permissions:
   contents: write
@@ -23,34 +24,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get version from vpn.sh
+      - name: Get version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VER=$(grep -oP 'ORDERVPN_VERSION="\K[^"]+' vpn.sh || echo "unknown")
-          if [[ -n "${{ github.event.inputs.version }}" ]]; then
-            VER="${{ github.event.inputs.version }}"
-          fi
-          echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "Version: v$VER"
+          set -euo pipefail
+          VERSION="${INPUT_VERSION:-3.12.4}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: v$VERSION"
 
       - name: Build tarball
         run: |
           chmod +x build.sh
-          bash build.sh
-          echo "Tarball created:"
+          bash build.sh "${{ steps.version.outputs.version }}"
           ls -lh ordervpn-src.tar.gz
 
       - name: Get SHA256
         id: sha
         run: |
+          set -euo pipefail
           SHA=$(sha256sum ordervpn-src.tar.gz | awk '{print $1}')
-          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "SHA256: $SHA"
 
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: web-v${{ steps.version.outputs.version }}
           name: OrderVPN Web v${{ steps.version.outputs.version }}
           body: |
             ## OrderVPN Web v${{ steps.version.outputs.version }}
@@ -70,26 +71,11 @@ jobs:
 
             ### 🚀 Deploy
             ```bash
-            # Via VPN script menu 21
-            menu  # lalu pilih 21 (OrderVPN Web)
-
-            # Atau manual
-            wget ${{ github.server_url }}/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/ordervpn-src.tar.gz
+            wget ${{ github.server_url }}/${{ github.repository }}/releases/download/web-v${{ steps.version.outputs.version }}/ordervpn-src.tar.gz
             tar -xzf ordervpn-src.tar.gz -C /var/www/html/ordervpn --strip-components=1
             ```
           files: ordervpn-src.tar.gz
           draft: false
           prerelease: false
-          make_latest: true
-
-      - name: Commit updated SHA256
-        run: |
-          if git diff --quiet vpn.sh; then
-            echo "No SHA256 change in vpn.sh"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add vpn.sh
-            git commit -m "chore: update ORDERVPN_TAR_SHA256 [skip ci]"
-            git push origin HEAD
-          fi
+          make_latest: false
+          fail_on_unmatched_files: true

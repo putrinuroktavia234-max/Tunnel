@@ -3,11 +3,11 @@
 # build.sh — Build ordervpn-src.tar.gz for GitHub Release
 # ══════════════════════════════════════════════════════════════
 # Usage: bash build.sh [version]
-#   version: optional, default reads from ORDERVPN_VERSION in vpn.sh
+#   version: optional, default uses the public web-panel release version
 #
 # Output:
 #   ordervpn-src.tar.gz — ready to upload as GitHub Release asset
-#   Also prints SHA256 to terminal for updating vpn.sh
+#   Also prints SHA256 to terminal for the web-panel release
 
 set -euo pipefail
 
@@ -27,7 +27,7 @@ if [[ "$VERSION" == "--force" ]]; then
     VERSION=""
 fi
 if [[ -z "$VERSION" ]]; then
-    VERSION=$(grep -oP 'ORDERVPN_VERSION="\K[^"]+' "$SCRIPT_DIR/vpn.sh" 2>/dev/null || echo "unknown")
+    VERSION="3.12.4"
 fi
 echo "=== Build OrderVPN Web v$VERSION ==="
 
@@ -81,17 +81,10 @@ echo "  Size  : $SIZE"
 echo "  SHA256: $SHA256"
 echo ""
 
-# ── Update ORDERVPN_TAR_SHA256 in vpn.sh ──
-VPN_SH="$SCRIPT_DIR/vpn.sh"
-if [[ -f "$VPN_SH" ]]; then
-    sed -i "s|ORDERVPN_TAR_SHA256=\"[^\"]*\"|ORDERVPN_TAR_SHA256=\"$SHA256\"|" "$VPN_SH"
-    echo "  ✔ ORDERVPN_TAR_SHA256 updated in vpn.sh"
-fi
-
 echo ""
 echo "  === UPLOAD KE GITHUB RELEASE ==="
 echo "  1. Buka: https://github.com/putrinuroktavia234-max/Tunnel/releases"
-echo "  2. Edit release v$VERSION (atau buat draft baru)"
+echo "  2. Edit release web-v$VERSION (atau buat draft baru)"
 echo "  3. Upload ordervpn-src.tar.gz sebagai asset"
 echo "  4. Publish release"
 echo ""

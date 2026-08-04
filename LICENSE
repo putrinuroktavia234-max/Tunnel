@@ -11,8 +11,8 @@ following terms and conditions.
 
 1. DEFINITIONS
 
-   "Software" refers to all files included in this repository, including
-   but not limited to: vpn.sh, ordervpn-src/*, login.php, deploy-node.sh,
+   "Software" refers to all files included in this repository, including the private installer source maintained in Tunnel-source,
+   ordervpn-src/*, login.php, deploy-node.sh,
    join.sh, vpn-api.sh, and all associated scripts, code, and assets.
 
    "Author" refers to The Professor (OrderVPN), the creator and

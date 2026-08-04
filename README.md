@@ -189,9 +189,9 @@ checksum `vpn.sha256`; source tidak perlu di-download oleh pengguna.
 
 > ✅ Setelah instalasi selesai, menu panel **otomatis muncul** setiap kali Anda login SSH sebagai root. Ketik `vpn` atau `menu` untuk membuka kembali.
 >
-> 🔐 Binary protected menggunakan payload terenkripsi AES-GCM dan dijalankan melalui
-> Bash tanpa menyimpan source sebagai `/root/vpn.sh`. Ini menghambat pembacaan kasual,
-> tetapi bukan perlindungan absolut terhadap administrator/root yang mengendalikan VPS.
+> 🔐 Binary protected dibuat dari source private menggunakan `shc` dan dijalankan
+> tanpa mengunduh `vpn.sh` ke VPS. Ini menghambat pembacaan kasual, tetapi bukan
+> perlindungan absolut terhadap administrator/root yang mengendalikan VPS.
 
 ---
 
@@ -474,8 +474,8 @@ apt update && apt upgrade -y
 ## 📁 Struktur Project Public
 
 Repository public ini berisi dokumentasi, konfigurasi distribusi, dan source web panel.
-Source installer utama disimpan terpisah di repository private dan tidak ditampilkan di
-struktur public.
+Source installer utama disimpan terpisah di repository private `Tunnel-source` dan tidak
+ditampilkan di struktur public.
 
 ```
 Tunnel/

@@ -54,7 +54,7 @@ This project is **proprietary**. Source code modifications are permitted for per
 
 ## 📝 Code Style
 
-### Shell Scripts (vpn.sh, *.sh)
+### Shell Scripts (*.sh)
 
 ```bash
 # Use 4-space indentation
@@ -109,14 +109,12 @@ Before submitting a fix, test on:
 ### Quick Test Commands
 
 ```bash
-# Check script syntax
-bash -n vpn.sh
+# Private installer source is validated in Tunnel-source.
+# Public repository checks are limited to the web-panel shell scripts.
+find ordervpn-src -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+find ordervpn-src -type f -name '*.sh' -print0 | xargs -0 -r -n1 shellcheck
 
-# Check for common issues
-shellcheck vpn.sh
-
-# Test menu navigation
-bash vpn.sh
+# The protected VPN binary is tested from the Tunnel-source workflow.
 ```
 
 ## 📜 License Reminder

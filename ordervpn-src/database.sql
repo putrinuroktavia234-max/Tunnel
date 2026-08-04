@@ -180,6 +180,6 @@ INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`) VALUES
 ('contact_wa', ''),
 ('contact_ig', '');
 
--- Default admin user (password akan di-update oleh vpn.sh saat install)
+-- Default admin user (password akan di-update oleh VPN installer saat install)
 INSERT IGNORE INTO `users` (`username`, `email`, `password`, `role`, `is_verified`) VALUES
 ('admin', 'admin@ordervpn.local', '$2y$10$placeholder_will_be_updated_by_vpn_sh', 'admin', 1);
