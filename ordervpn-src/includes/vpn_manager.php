@@ -27,7 +27,7 @@ class VPNManager {
         $isLocal = self::isLocalHost($host);
 
         if ($isLocal) {
-            $out = shell_exec(sprintf('sudo %s delete %s %s 2>&1',
+            $out = shell_exec(sprintf('timeout -k 5 20 sudo %s delete %s %s 2>&1',
                 escapeshellcmd(VPN_API_BRIDGE),
                 escapeshellarg(strtolower($type)),
                 escapeshellarg($username)
@@ -49,7 +49,7 @@ class VPNManager {
         $host = $server['host'] ?? '';
         $port = $server['port'] ?? 22;
         if (self::isLocalHost($host)) {
-            $out = shell_exec('sudo '.VPN_API_BRIDGE.' status 2>/dev/null');
+            $out = shell_exec('timeout -k 5 10 sudo '.VPN_API_BRIDGE.' status 2>/dev/null');
             $r = json_decode(trim($out??''), true);
             return ($r['xray']??'') === 'active' ? 'ready' : 'offline';
         }
@@ -95,7 +95,7 @@ class VPNManager {
         if (!is_executable(VPN_API_BRIDGE) && !file_exists(VPN_API_BRIDGE))
             return ['success'=>false,'message'=>'vpn-api bridge tidak ditemukan'];
 
-        $cmd = sprintf('sudo %s %s %s %s %d %d %d 2>&1',
+        $cmd = sprintf('timeout -k 5 20 sudo %s %s %s %s %d %d %d 2>&1',
             escapeshellcmd(VPN_API_BRIDGE),
             escapeshellarg($action),
             escapeshellarg(strtolower($type)),
@@ -155,7 +155,7 @@ class VPNManager {
             return ['success'=>false,'message'=>'Tidak ada SSH key atau sshpass untuk koneksi ke '.$host];
         }
 
-        exec($sshCmd, $outputArr, $exitCode);
+        exec('timeout -k 5 35 ' . $sshCmd, $outputArr, $exitCode);
         $output = implode("\n", $outputArr);
 
         if ($exitCode !== 0) {
