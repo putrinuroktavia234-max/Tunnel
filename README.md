@@ -189,9 +189,10 @@ checksum `vpn.sha256`; source tidak perlu di-download oleh pengguna.
 
 > ✅ Setelah instalasi selesai, menu panel **otomatis muncul** setiap kali Anda login SSH sebagai root. Ketik `vpn` atau `menu` untuk membuka kembali.
 >
-> 🔐 Binary protected dibuat dari source private menggunakan `shc` dan dijalankan
-> tanpa mengunduh `vpn.sh` ke VPS. Ini menghambat pembacaan kasual, tetapi bukan
-> perlindungan absolut terhadap administrator/root yang mengendalikan VPS.
+> 🔐 Binary protected dibuat dari source private (launcher C dengan payload
+> gzip + XOR yang dijalankan dari memori) dan dijalankan tanpa mengunduh
+> `vpn.sh` ke VPS. Ini menghambat pembacaan kasual, tetapi bukan perlindungan
+> absolut terhadap administrator/root yang mengendalikan VPS.
 
 ---
 

@@ -51,8 +51,11 @@ jobs:
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: web-v${{ steps.version.outputs.version }}
-          name: OrderVPN Web v${{ steps.version.outputs.version }}
+          # Tag/versi disatukan dengan release VPN binary (vX.Y.Z) agar
+          # /releases/latest/download/vpn selalu mengarah ke release yang punya
+          # asset vpn + vpn.sha256. Jangan buat tag terpisah (mis. web-vX).
+          tag_name: v${{ steps.version.outputs.version }}
+          name: OrderVPN v${{ steps.version.outputs.version }}
           body: |
             ## OrderVPN Web v${{ steps.version.outputs.version }}
 
@@ -71,7 +74,7 @@ jobs:
 
             ### 🚀 Deploy
             ```bash
-            wget ${{ github.server_url }}/${{ github.repository }}/releases/download/web-v${{ steps.version.outputs.version }}/ordervpn-src.tar.gz
+            wget ${{ github.server_url }}/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/ordervpn-src.tar.gz
             tar -xzf ordervpn-src.tar.gz -C /var/www/html/ordervpn --strip-components=1
             ```
           files: ordervpn-src.tar.gz
